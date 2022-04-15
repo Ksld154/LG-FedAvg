@@ -127,7 +127,6 @@ class LocalTrainer(object):
     def train(self, net, lr=0.1):
         net.train()
         # train and update
-        # optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.5)
         optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, momentum=0.5)
         # torchinfo.summary(net, (1, 3, 32, 32))
 

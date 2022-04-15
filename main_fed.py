@@ -4,6 +4,7 @@
 
 import copy
 import pickle
+from unittest import mock
 import numpy as np
 import pandas as pd
 import torch
@@ -49,6 +50,7 @@ if __name__ == '__main__':
     best_loss = None
     best_acc = None
     best_epoch = None
+    mock_gradually_freezing_degree = 0
 
     lr = args.lr
     results = []
@@ -65,7 +67,7 @@ if __name__ == '__main__':
         loss_locals = []
         m = max(int(args.frac * args.num_users), 1)  # number of workers per round
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
-        print("Round {}, lr: {:.6f}, {}".format(e+1, lr, idxs_users))
+        print("Round {:3d}, lr: {:.6f}, {}".format(e+1, lr, idxs_users))
 
         for idx in idxs_users:
             # local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
@@ -75,24 +77,17 @@ if __name__ == '__main__':
 
             w_local, loss = local.train(net=net_local.to(args.device), lr=lr)
             loss_locals.append(copy.deepcopy(loss))
-            
-            # freeze every 10 epochs
-            # if (e+1) % 2 == 0:
-            #     net_local = local.further_freeze(net=net_local.to(args.device), freeze_degree=1)
 
             if w_glob is None:
                 w_glob = copy.deepcopy(w_local)
             else:
                 for k in w_glob.keys():
                     w_glob[k] += w_local[k]
-            
-            # if (e+1) % 6 == 0:
-            #     torchinfo.summary(net_local.to(args.device), (1,3,32,32), device=args.device)
 
 
         lr *= args.lr_decay
 
-        # update global weights
+        # update global weights (aggregation)
         for k in w_glob.keys():
             w_glob[k] = torch.div(w_glob[k], m)
 
@@ -106,9 +101,7 @@ if __name__ == '__main__':
         if (e + 1) % args.test_freq == 0:
             net_glob.eval()
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
-            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}'.format(
-                e+1, loss_avg, loss_test, acc_test))
-
+            print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test:.3f}, Test accuracy: {acc_test:.2f}')
 
             if best_acc is None or acc_test > best_acc:
                 net_best = copy.deepcopy(net_glob)
@@ -135,11 +128,12 @@ if __name__ == '__main__':
 
         # freeze global model??
         if (e+1) % 20 == 0:
+            mock_gradually_freezing_degree += 1
             for idx, l in enumerate(net_glob.layers):
                 print(l)
-                if (idx+1) <= 0:
+                if (idx+1) <= mock_gradually_freezing_degree:
                     l.requires_grad_(False)
-
+                    
             torchinfo.summary(net_glob, (1,3,32,32), device=args.device)
         
 
@@ -147,3 +141,9 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Best model, iter: {best_epoch}, acc: {best_acc}')
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
+
+    # for r in results:
+    #     print(r[3])
+    # print(final_results.acc_test)
+    accuracy = final_results.acc_test.to_numpy()
+    print(np.array2string(accuracy, separator=', '))
