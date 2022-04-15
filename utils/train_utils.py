@@ -1,5 +1,5 @@
 from torchvision import datasets, transforms
-from models.Nets import MLP, CNNMnist, CNNCifar
+from models.Nets import MLP, CNNMnist, CNNCifar, LeNet
 from utils.sampling import iid, noniid
 
 trans_mnist = transforms.Compose([transforms.ToTensor(),
@@ -62,6 +62,9 @@ def get_model(args):
         net_glob = CNNMnist(args=args).to(args.device)
     elif args.model == 'mlp' and args.dataset == 'mnist':
         net_glob = MLP(dim_in=784, dim_hidden=256, dim_out=args.num_classes).to(args.device)
+    
+    elif args.model == 'lenet' and args.dataset == 'cifar10':
+        net_glob = LeNet(args=args).to(args.device)
     else:
         exit('Error: unrecognized model')
     print(net_glob)
