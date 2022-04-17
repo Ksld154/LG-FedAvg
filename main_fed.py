@@ -14,7 +14,7 @@ import torchinfo
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
-from models.Update import LocalTrainer, LocalUpdate
+from models.Update import LocalUpdate
 from models.test import test_img
 import os
 
@@ -41,6 +41,8 @@ if __name__ == '__main__':
     # build model
     net_glob = get_model(args)
     net_glob.train()
+    global_trainer = GlobalTrainer(net_glob)
+
 
     # training
     results_save_path = os.path.join(base_dir, 'fed/results.csv')
@@ -54,15 +56,17 @@ if __name__ == '__main__':
 
     lr = args.lr
     results = []
-    # tt = torch.Tensor([1,3,32,32])
+
 
     current_time = datetime.datetime.now()
     start_time = time.time()
     print(f'Training Start: {current_time}')
     
-    # global_trainer = GlobalTrainer(net_glob)
+    freeze_degree = 0 # global record the freezing degree for local side
 
     for e in range(args.epochs):
+        lr *= args.lr_decay
+        
         w_glob = None
         loss_locals = []
         m = max(int(args.frac * args.num_users), 1)  # number of workers per round
@@ -78,6 +82,11 @@ if __name__ == '__main__':
             w_local, loss = local.train(net=net_local.to(args.device), lr=lr)
             loss_locals.append(copy.deepcopy(loss))
 
+            net_local_secondary = copy.deepcopy(net_glob)
+            local.further_freeze(net=net_local_secondary, freeze_degree=1)
+            w_local_secondary, loss_secondary = local.train(net=net_local_secondary.to(args.device), lr=lr)
+
+
             if w_glob is None:
                 w_glob = copy.deepcopy(w_local)
             else:
@@ -85,7 +94,6 @@ if __name__ == '__main__':
                     w_glob[k] += w_local[k]
 
 
-        lr *= args.lr_decay
 
         # update global weights (aggregation)
         for k in w_glob.keys():
@@ -126,15 +134,14 @@ if __name__ == '__main__':
             print(f'Elapsed Time: {datetime.timedelta(seconds= now - start_time)}')
 
 
-        # freeze global model??
-        if (e+1) % 20 == 0:
-            mock_gradually_freezing_degree += 1
-            for idx, l in enumerate(net_glob.layers):
-                print(l)
-                if (idx+1) <= mock_gradually_freezing_degree:
-                    l.requires_grad_(False)
-                    
-            torchinfo.summary(net_glob, (1,3,32,32), device=args.device)
+        # [Experiment #1] Static Freeze global model
+        # if (e+1) % 20 == 0:
+        #     mock_gradually_freezing_degree += 1
+        #     for idx, l in enumerate(net_glob.layers):
+        #         print(l)
+        #         if (idx+1) <= mock_gradually_freezing_degree:
+        #             l.requires_grad_(False)
+        #     torchinfo.summary(net_glob, (1,3,32,32), device=args.device)
         
 
 
@@ -142,8 +149,5 @@ if __name__ == '__main__':
     print(f'Best model, iter: {best_epoch}, acc: {best_acc}')
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
 
-    # for r in results:
-    #     print(r[3])
-    # print(final_results.acc_test)
     accuracy = final_results.acc_test.to_numpy()
     print(np.array2string(accuracy, separator=', '))

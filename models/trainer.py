@@ -20,6 +20,18 @@ class DatasetSplit(Dataset):
         image, label = self.dataset[self.idxs[item]]
         return image, label
 
+class GlobalTrainer(object):
+    def __init__(self, args, net):
+        self.args = args
+        self.net = net
+        self.weights = None
+        self.loss_test= []
+        self.loss_train = []
+        self.loss_test_delta = []
+        self.loss_train_delta = []
+
+
+
 class LocalTrainer(object):
     def __init__(self, args, dataset=None, idxs=None, pretrain=False):
         self.args = args
@@ -29,9 +41,8 @@ class LocalTrainer(object):
         self.pretrain = pretrain
 
     def train(self, net, lr=0.1):
-        net.train()
         # train and update
-        # optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.5)
+        net.train()
         optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, momentum=0.5)
         # torchinfo.summary(net, (1, 3, 32, 32))
 
@@ -58,28 +69,11 @@ class LocalTrainer(object):
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
-    def further_freeze(self, net, freeze_degree=-1):
-        # print(net.__dict__)
+    def further_freeze(self, net, freeze_degree=0):
         for idx, l in enumerate(net.layers):
-            print(l)
-            if idx <= freeze_degree:
+            if (idx+1) <= freeze_degree:
                 l.requires_grad_(False)
-                # for p in l.parameters():
-                #     p.requires_grad = False
-            # print(l.require_grad)
-            # print('==============')
-        torchinfo.summary(net, (1, 3, 32, 32))
-        # self.optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=0.9, weight_decay=5e-4)
-        # self.optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=self.args.lr, momentum=0.5)
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=200)
-
+        # torchinfo.summary(net, (1, 3, 32, 32), device=self.args.device)
         return net
 
 
-class GlobalTrainer(object):
-    def __init__(self, args, dataset=None, idxs=None, pretrain=False):
-        self.args = args
-        self.loss_func = nn.CrossEntropyLoss()
-        self.selected_clients = []
-        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
-        self.pretrain = pretrain
