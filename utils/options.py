@@ -46,6 +46,10 @@ def args_parser():
     parser.add_argument('--load_fed', type=str, default='', help='define pretrained federated model path')
     parser.add_argument('--results_save', type=str, default='/', help='define fed results save folder')
     parser.add_argument('--start_saving', type=int, default=0, help='when to start saving models')
+    parser.add_argument('--window_size', type=int, default=10, help='Window size for moving avg. loss')
+    parser.add_argument('--gradually_freezing', action='store_true', help='Enable Gradually Freezing')
+
+
 
     args = parser.parse_args()
     return args

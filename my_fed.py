@@ -3,6 +3,7 @@
 # Python version: 3.6
 
 import copy
+from json import load
 import pickle
 from unittest import mock
 import numpy as np
@@ -20,9 +21,10 @@ from models.test import test_img
 import os
 
 # my library
-from models.trainer import GlobalTrainer, LocalTrainer
+from models.trainer import GlobalTrainer, LocalTrainer, LocalModel
 from utils.tools import moving_average
 import utils.myplotter as myplotter
+from constants import *
 
 import pdb
 
@@ -64,11 +66,17 @@ if __name__ == '__main__':
     mock_gradually_freezing_degree = 0 # for static freezing
     freeze_degree = 0 # global record the freezing degree for local side
     switch_model_flag = False
+    window_size_cnt = 0
 
     current_time = datetime.datetime.now()
     start_time = time.time()
     print(f'Training Start: {current_time}')
 
+    # print(dict_users_train)
+    all_local_trainers = []
+    for idx in range(args.num_users):
+        local_trainer = LocalTrainer(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
+        all_local_trainers.append(local_trainer)
 
     for e in range(args.epochs):
         g_trainer.weights = None
@@ -79,22 +87,26 @@ if __name__ == '__main__':
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         print(f'Round {(e+1):3d}, lr: {lr:.6f}, {idxs_users}')
 
+
+
         for idx in idxs_users:
-            local_trainer = LocalTrainer(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
+            # local_trainer = LocalTrainer(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
+            local_trainer = all_local_trainers[idx]
 
             if switch_model_flag:
                 pass
 
             # Train local primary model
-            net_local = copy.deepcopy(g_trainer.net)
-            w_local, loss = local_trainer.train(net=net_local.to(args.device), lr=lr)
+            local_primary_net = copy.deepcopy(g_trainer.net)
+            local_trainer.net_primary = LocalModel(model=local_primary_net, args=args)
+            local_trainer.net_primary.model = local_trainer.further_freeze(net=local_trainer.net_primary.model, freeze_degree=local_trainer.freeze_degree)
+            
+            w_local, loss = local_trainer.train(net=local_trainer.net_primary.model.to(args.device), lr=lr)
             loss_locals.append(copy.deepcopy(loss))
-            
-            # Train local secondary model
-            net_local_secondary = copy.deepcopy(net_glob)
-            local_trainer.further_freeze(net=net_local_secondary, freeze_degree=1)
-            w_local_secondary, loss_secondary = local_trainer.train(net=net_local_secondary.to(args.device), lr=lr)
-            
+            local_trainer.net_primary.loss_train.append(loss)
+            local_trainer.net_primary.update_loss_delta(loss)
+
+
             # increament global weights (aggregation)
             if g_trainer.weights is None:
                 g_trainer.weights = copy.deepcopy(w_local)
@@ -102,10 +114,40 @@ if __name__ == '__main__':
                 for k in g_trainer.weights.keys():
                     g_trainer.weights[k] += w_local[k]
 
+            # Train local secondary model
+            if args.gradually_freezing:
+                local_secondary_net = copy.deepcopy(g_trainer.net)
+                local_trainer.net_secondary = LocalModel(model=local_secondary_net, args=args)
+                local_trainer.net_secondary.model = local_trainer.further_freeze(net=local_trainer.net_secondary.model, freeze_degree=local_trainer.freeze_degree+1)
+                
+                w_local_secondary, loss_2 = local_trainer.train(net=local_trainer.net_secondary.model.to(args.device), lr=lr)
+                local_trainer.net_secondary.loss_train.append(loss_2)
+                local_trainer.net_secondary.update_loss_delta(loss_2)
+            
+            
+            # local switch model decision:
+            # if avg(second) - avg(primary train_loss)  < THRESHOLD and both model are convergd:
+            # then increase local freeze_idx
+            if args.gradually_freezing:
+                local_trainer.model_loss_diff.append(loss_2-loss)
+                print(f'Round {(e+1):3d}, worker {idx}, p_loss: {loss}, s_loss: {loss_2}')
+                avg_model_loss_diff = moving_average(local_trainer.model_loss_diff, args.window_size)
+                if local_trainer.net_primary.is_converged() and local_trainer.net_secondary.is_converged() and avg_model_loss_diff < LOSS_DIFF_THRESHOLD:
+                    print(f'Switch model on local worker #{idx}')
+                    local_trainer.freeze_degree += 1
+                    local_trainer.loss_diff.clear()
+
+
+
+
+
         # update global weights (aggregation), then update global model
         for k in g_trainer.weights.keys():
             g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)
         g_trainer.net.load_state_dict(g_trainer.weights)
+
+
+        # Generate secondary model from global model here?
 
 
         # print loss
@@ -153,11 +195,14 @@ if __name__ == '__main__':
             print(f'Elapsed Time: {datetime.timedelta(seconds= now - start_time)}')
 
         # [Experiment \#2] Gradually freezing(decision at global side, freezing at local side)
+        window_size_cnt += 1
         avg_loss = moving_average(g_trainer.loss_test, 15)
-        if not np.isnan(avg_loss) and avg_loss < 0.1:
+        if not np.isnan(avg_loss) and window_size_cnt >= 15 and avg_loss < 0.1:
             switch_model_flag = True
+            window_size_cnt = 0
             # g_trainer.loss_test.clear()
-        
+
+            # Generate secondary model here?
         
         # [Experiment #1] Static Freeze global model
         # if (e+1) % 20 == 0:

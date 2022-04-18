@@ -2,11 +2,16 @@ from multiprocessing.spawn import import_main_path
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
+import numpy as np
 
 from tqdm import tqdm
 import math
 import pdb
 import torchinfo
+from constants import LOSS_DELTA_THRESHOLD
+
+from utils.tools import moving_average
+from constants import *
 
 class DatasetSplit(Dataset):
     def __init__(self, dataset, idxs):
@@ -39,6 +44,19 @@ class LocalTrainer(object):
         self.selected_clients = []
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
         self.pretrain = pretrain
+        # self.net_primary = None
+        # self.net_secondary = None
+        # self.primary_loss_train = []
+        # self.secondary_loss_train = []
+
+        self.freeze_degree = 0
+
+
+        self.net_primary = LocalModel(model=None, args=args)
+        self.net_secondary = LocalModel(model=None, args=args)
+        self.model_loss_diff = []
+        # self.primary_loss_train = []
+        # self.secondary_loss_train = []
 
     def train(self, net, lr=0.1):
         # train and update
@@ -77,3 +95,23 @@ class LocalTrainer(object):
         return net
 
 
+    def is_converged(self, train_loss_delta):
+        pass
+
+
+class LocalModel(object):
+    def __init__(self, model, args) -> None:
+        self.model = model
+        self.args = args
+        self.loss_train = []
+        self.loss_train_delta = []
+    
+    def update_loss_delta(self, loss):
+        if not self.loss_train == []:
+            self.loss_train_delta.append(loss - self.loss_train[-1])
+        
+    def is_converged(self):
+        avg_train_loss_delta = moving_average(self.loss_train_delta, self.args.window_size)
+        if not np.isnan(avg_train_loss_delta) and avg_train_loss_delta < LOSS_DELTA_THRESHOLD:
+            return True
+        return False
