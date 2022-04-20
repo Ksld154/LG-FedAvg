@@ -1,3 +1,4 @@
+import copy
 from multiprocessing.spawn import import_main_path
 import torch
 from torch import nn
@@ -8,7 +9,7 @@ from tqdm import tqdm
 import math
 import pdb
 import torchinfo
-from constants import LOSS_DELTA_THRESHOLD
+from constants import LOSS_DELTA_CONVERGED_THRESHOLD
 
 from utils.tools import moving_average
 from constants import *
@@ -26,15 +27,20 @@ class DatasetSplit(Dataset):
         return image, label
 
 class GlobalTrainer(object):
-    def __init__(self, args, net):
+    def __init__(self, args, net, net_secondary):
         self.args = args
-        self.net = net
+        self.net = MyModel(model=net, args=args, freeze_degree=0)
+        self.net_secondary = MyModel(model=net_secondary, args=args, freeze_degree=1)
         self.weights = None
-        self.loss_test= []
-        self.loss_train = []
-        self.loss_test_delta = []
-        self.loss_train_delta = []
+        self.weights_secondary = None
+        
+        self.models_loss_test_diff = []
 
+    def switch_model(self):
+        # self.net = copy.deepcopy(self.net_secondary)
+        # self.net_secondary = MyModel(model=copy.deepcopy(self.net_secondary.model), freeze_degree=self.net_secondary.freeze_degree+1, args=self.args)
+        # self.net.freeze_degree += 1
+        self.net_secondary.freeze_degree += 1
 
 
 class LocalTrainer(object):
@@ -44,19 +50,13 @@ class LocalTrainer(object):
         self.selected_clients = []
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
         self.pretrain = pretrain
-        # self.net_primary = None
-        # self.net_secondary = None
-        # self.primary_loss_train = []
-        # self.secondary_loss_train = []
 
         self.freeze_degree = 0
 
-
-        self.net_primary = LocalModel(model=None, args=args)
-        self.net_secondary = LocalModel(model=None, args=args)
+        self.net_primary = MyModel(model=None, args=args, freeze_degree=0)
+        # self.net_secondary = MyModel(model=None, args=args)
         self.model_loss_diff = []
-        # self.primary_loss_train = []
-        # self.secondary_loss_train = []
+
 
     def train(self, net, lr=0.1):
         # train and update
@@ -87,31 +87,41 @@ class LocalTrainer(object):
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
-    def further_freeze(self, net, freeze_degree=0):
-        for idx, l in enumerate(net.layers):
-            if (idx+1) <= freeze_degree:
-                l.requires_grad_(False)
-        # torchinfo.summary(net, (1, 3, 32, 32), device=self.args.device)
-        return net
 
 
-    def is_converged(self, train_loss_delta):
-        pass
 
 
-class LocalModel(object):
-    def __init__(self, model, args) -> None:
+class MyModel(object):
+    def __init__(self, model, args, freeze_degree) -> None:
         self.model = model
         self.args = args
+        self.freeze_degree = freeze_degree
+        
         self.loss_train = []
         self.loss_train_delta = []
+        self.acc = []
+
+        self.loss_test = []
+        self.loss_test_delta = []
     
-    def update_loss_delta(self, loss):
-        if not self.loss_train == []:
+    def update_loss_train_delta(self, loss):
+        if self.loss_train:
             self.loss_train_delta.append(loss - self.loss_train[-1])
-        
+
+    def update_loss_test_delta(self, loss):
+        if self.loss_test:
+            self.loss_test_delta.append(loss - self.loss_test[-1])
+
     def is_converged(self):
         avg_train_loss_delta = moving_average(self.loss_train_delta, self.args.window_size)
-        if not np.isnan(avg_train_loss_delta) and avg_train_loss_delta < LOSS_DELTA_THRESHOLD:
+        if not np.isnan(avg_train_loss_delta) and avg_train_loss_delta < LOSS_DELTA_CONVERGED_THRESHOLD:
             return True
         return False
+    
+
+    def further_freeze(self):
+        for idx, l in enumerate(self.model.layers):
+            if (idx+1) <= self.freeze_degree:
+                l.requires_grad_(False)
+        # torchinfo.summary(net, (1, 3, 32, 32), device=self.args.device)
+        # return net

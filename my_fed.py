@@ -21,7 +21,7 @@ from models.test import test_img
 import os
 
 # my library
-from models.trainer import GlobalTrainer, LocalTrainer, LocalModel
+from models.trainer import GlobalTrainer, LocalTrainer, MyModel
 from utils.tools import moving_average
 import utils.myplotter as myplotter
 from constants import *
@@ -49,7 +49,8 @@ if __name__ == '__main__':
     # build model
     net_glob = get_model(args)
     net_glob.train()
-    g_trainer = GlobalTrainer(args= args, net=net_glob)
+    net_glob_second = copy.deepcopy(net_glob)
+    g_trainer = GlobalTrainer(args= args, net=net_glob, net_secondary=net_glob_second)
 
     # training
     results_save_path = os.path.join(base_dir, 'fed/results.csv')
@@ -72,11 +73,11 @@ if __name__ == '__main__':
     start_time = time.time()
     print(f'Training Start: {current_time}')
 
-    # print(dict_users_train)
     all_local_trainers = []
     for idx in range(args.num_users):
         local_trainer = LocalTrainer(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
         all_local_trainers.append(local_trainer)
+
 
     for e in range(args.epochs):
         g_trainer.weights = None
@@ -88,24 +89,20 @@ if __name__ == '__main__':
         print(f'Round {(e+1):3d}, lr: {lr:.6f}, {idxs_users}')
 
 
-
         for idx in idxs_users:
             # local_trainer = LocalTrainer(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
             local_trainer = all_local_trainers[idx]
 
-            if switch_model_flag:
-                pass
-
             # Train local primary model
-            local_primary_net = copy.deepcopy(g_trainer.net)
-            local_trainer.net_primary = LocalModel(model=local_primary_net, args=args)
-            local_trainer.net_primary.model = local_trainer.further_freeze(net=local_trainer.net_primary.model, freeze_degree=local_trainer.freeze_degree)
-            
+            local_primary_model = copy.deepcopy(g_trainer.net.model)
+            local_primary_model.train()
+            local_trainer.net_primary = MyModel(model=local_primary_model, args=args, freeze_degree=0)
             w_local, loss = local_trainer.train(net=local_trainer.net_primary.model.to(args.device), lr=lr)
-            loss_locals.append(copy.deepcopy(loss))
-            local_trainer.net_primary.loss_train.append(loss)
-            local_trainer.net_primary.update_loss_delta(loss)
 
+            loss_locals.append(copy.deepcopy(loss))
+            local_trainer.net_primary.update_loss_train_delta(loss=loss)
+            local_trainer.net_primary.loss_train.append(loss)
+            
 
             # increament global weights (aggregation)
             if g_trainer.weights is None:
@@ -114,60 +111,54 @@ if __name__ == '__main__':
                 for k in g_trainer.weights.keys():
                     g_trainer.weights[k] += w_local[k]
 
-            # Train local secondary model
-            if args.gradually_freezing:
-                local_secondary_net = copy.deepcopy(g_trainer.net)
-                local_trainer.net_secondary = LocalModel(model=local_secondary_net, args=args)
-                local_trainer.net_secondary.model = local_trainer.further_freeze(net=local_trainer.net_secondary.model, freeze_degree=local_trainer.freeze_degree+1)
-                
-                w_local_secondary, loss_2 = local_trainer.train(net=local_trainer.net_secondary.model.to(args.device), lr=lr)
-                local_trainer.net_secondary.loss_train.append(loss_2)
-                local_trainer.net_secondary.update_loss_delta(loss_2)
-            
-            
-            # local switch model decision:
-            # if avg(second) - avg(primary train_loss)  < THRESHOLD and both model are convergd:
-            # then increase local freeze_idx
-            if args.gradually_freezing:
-                local_trainer.model_loss_diff.append(loss_2-loss)
-                print(f'Round {(e+1):3d}, worker {idx}, p_loss: {loss}, s_loss: {loss_2}')
-                avg_model_loss_diff = moving_average(local_trainer.model_loss_diff, args.window_size)
-                if local_trainer.net_primary.is_converged() and local_trainer.net_secondary.is_converged() and avg_model_loss_diff < LOSS_DIFF_THRESHOLD:
-                    print(f'Switch model on local worker #{idx}')
-                    local_trainer.freeze_degree += 1
-                    local_trainer.loss_diff.clear()
-
-
-
-
-
-        # update global weights (aggregation), then update global model
+        # global primary_model aggregation
         for k in g_trainer.weights.keys():
             g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)
-        g_trainer.net.load_state_dict(g_trainer.weights)
+        # g_trainer.net.model.load_state_dict(g_trainer.weights)
+        
+        # New Aggregation
+        old_weights = g_trainer.net.model.state_dict() 
+        for idx, k in enumerate(g_trainer.weights.keys()):
+            # times 2 for weights and bias in single layer (LeNet-5)
+            if idx < g_trainer.net.freeze_degree * 2:  # use old weights
+                print(k)
+                g_trainer.weights[k] = copy.deepcopy(old_weights[k])
+        g_trainer.net.model.load_state_dict(g_trainer.weights)
+        
 
 
-        # Generate secondary model from global model here?
-
+        # global secondary_model aggregation
+        old_secondary_weights = g_trainer.net_secondary.model.state_dict() 
+        g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights)   
+        if (e+1) > WARM_UP_ROUNDS:
+            for idx, k in enumerate(g_trainer.weights_secondary.keys()):
+                # times 2 for weights and bias in single layer (LeNet-5)
+                if idx < g_trainer.net_secondary.freeze_degree * 2:  # use old weights
+                    print(k)
+                    g_trainer.weights_secondary[k] = copy.deepcopy(old_secondary_weights[k])
+                else: # use aggregated weights
+                    g_trainer.weights_secondary[k] = g_trainer.weights[k]  
+        g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
-
-        if g_trainer.loss_train:
-           loss_diff = loss_avg -  g_trainer.loss_train[-1]
-           g_trainer.loss_train_delta.append(loss_diff)
-        g_trainer.loss_train.append(loss_avg)
+        
+        g_trainer.net.update_loss_train_delta(loss=loss_avg)
+        g_trainer.net.loss_train.append(loss_avg)
+        
+        g_trainer.net_secondary.update_loss_train_delta(loss=loss_avg)
+        g_trainer.net_secondary.loss_train.append(loss_avg)
 
 
         # test/validate global model
         acc_test = loss_test = None
         if (e+1) % args.test_freq == 0:
-            g_trainer.net.eval()
-            acc_test, loss_test = test_img(g_trainer.net, dataset_test, args)
+            g_trainer.net.model.eval()
+            acc_test, loss_test = test_img(g_trainer.net.model, dataset_test, args)
             print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test:.3f}, Test accuracy: {acc_test:.2f}')
 
             if best_acc is None or acc_test > best_acc:
-                net_best = copy.deepcopy(g_trainer.net)
+                net_best = copy.deepcopy(g_trainer.net.model)
                 best_acc = acc_test
                 best_epoch = e
 
@@ -176,17 +167,33 @@ if __name__ == '__main__':
             final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc'])
             final_results.to_csv(results_save_path, index=False)
 
-            if g_trainer.loss_test:
-                loss_diff = loss_test - g_trainer.loss_test[-1]
-                g_trainer.loss_test_delta.append(loss_diff)
-            g_trainer.loss_test.append(loss_test)
+            g_trainer.net.update_loss_test_delta(loss=loss_test)
+            g_trainer.net.loss_test.append(loss_test)
+            g_trainer.net.acc.append(acc_test)
+
+            
+            # test secondary global model here
+            g_trainer.net_secondary.model.eval()
+            acc_test_2, loss_test_2 = test_img(g_trainer.net_secondary.model, dataset_test, args)
+            print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test_2:.3f}, Test accuracy: {acc_test_2:.2f} [Secondary model]')
+            
+            g_trainer.net_secondary.update_loss_test_delta(loss=loss_test_2)
+            g_trainer.net_secondary.loss_test.append(loss_test_2)
+            g_trainer.net_secondary.acc.append(acc_test_2)
+
+            if (e+1) > WARM_UP_ROUNDS:
+                # g_trainer.models_loss_test_diff.append(loss_test_2 - loss_test)
+                g_trainer.models_loss_test_diff.append(abs(loss_test_2 - loss_test))
+            
+            # print(g_trainer.net.acc)
+            # print(g_trainer.net_secondary.acc)
 
 
         if (e+1) % 50 == 0:
             best_save_path = os.path.join(base_dir, f'fed/best_{(e + 1)}.pt')
             model_save_path = os.path.join(base_dir, f'fed/model_{(e + 1)}.pt')
             torch.save(net_best.state_dict(), best_save_path)
-            torch.save(g_trainer.net.state_dict(), model_save_path)
+            torch.save(g_trainer.net.model.state_dict(), model_save_path)
         
         if (e+1) % 10 == 0:
             current_time = datetime.datetime.now()
@@ -194,16 +201,27 @@ if __name__ == '__main__':
             print(f'Epoch {e+1}, Current Time: {current_time}')
             print(f'Elapsed Time: {datetime.timedelta(seconds= now - start_time)}')
 
-        # [Experiment \#2] Gradually freezing(decision at global side, freezing at local side)
-        window_size_cnt += 1
-        avg_loss = moving_average(g_trainer.loss_test, 15)
-        if not np.isnan(avg_loss) and window_size_cnt >= 15 and avg_loss < 0.1:
-            switch_model_flag = True
-            window_size_cnt = 0
-            # g_trainer.loss_test.clear()
+        # [Experiment \#2] Gradually freezing(decision at global side, freezing also at global side)
+        print(f'Global Primary   Model Converged: {g_trainer.net.is_converged()}')
+        print(f'Global Secondary Model Converged: {g_trainer.net_secondary.is_converged()}')
+
+        
+        window_size_cnt += 1        
+        avg_loss_diff = moving_average(g_trainer.models_loss_test_diff, args.window_size)
+        if g_trainer.net.is_converged() and g_trainer.net_secondary.is_converged():
+            print("*** Both models are converged! ***")
+
+
+        
+            if window_size_cnt >= args.window_size and not np.isnan(avg_loss_diff) and avg_loss_diff < LOSS_DIFF_THRESHOLD:
+                print(f"Secondary model is tolarably good: {avg_loss_diff}, let's switch model")
+                g_trainer.switch_model()
+                switch_model_flag = True
+                window_size_cnt = 0
 
             # Generate secondary model here?
         
+       
         # [Experiment #1] Static Freeze global model
         # if (e+1) % 20 == 0:
         #     mock_gradually_freezing_degree += 1
@@ -219,20 +237,33 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Best model, iter: {best_epoch}, acc: {best_acc}')
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
+    accuracy = final_results.acc_test.to_numpy()
 
-    print(g_trainer.loss_train)
-    print(g_trainer.loss_test)
-    print(g_trainer.loss_train_delta)
-    print(g_trainer.loss_test_delta)
 
-    myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss")
-    myplotter.plot_data(g_trainer.loss_train, "Train Loss")
-    myplotter.plot_data(g_trainer.loss_test, "Test Loss")
-    myplotter.plot_data(g_trainer.loss_train_delta, "Train Loss Delta")
-    myplotter.plot_data(g_trainer.loss_test_delta, "Test Loss Delta")
+    print(g_trainer.net.loss_train)
+    print(g_trainer.net.loss_test)
+    print(g_trainer.net.loss_train_delta)
+    print(g_trainer.net.loss_test_delta)
+
+    myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss", 1)
+    myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")
+    myplotter.plot_data(g_trainer.net_secondary.loss_test, "Secondary Test Loss")
+    myplotter.plot_data(g_trainer.net.loss_train, "Primary Train Loss")
+
+    myplotter.legend()
+    myplotter.save_figure(base_dir, "global_model_metrics")
+    # myplotter.plot_data(g_trainer.loss_train_delta, "Train Loss Delta")
+    # myplotter.plot_data(g_trainer.loss_test_delta, "Test Loss Delta")
+    
+    myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Accuracy", 2)
+    myplotter.plot_data(g_trainer.net.acc, "Global Primary Model")
+    myplotter.plot_data(g_trainer.net_secondary.acc, "Global Secondary Model")
+    myplotter.legend()
+    myplotter.save_figure(base_dir, "global_model_accuracy")
+
+    
     myplotter.show()
 
 
-    accuracy = final_results.acc_test.to_numpy()
     print(np.array2string(accuracy, separator=', '))
     
