@@ -37,9 +37,12 @@ class GlobalTrainer(object):
         self.models_loss_test_diff = []
 
     def switch_model(self):
-        # self.net = copy.deepcopy(self.net_secondary)
-        # self.net_secondary = MyModel(model=copy.deepcopy(self.net_secondary.model), freeze_degree=self.net_secondary.freeze_degree+1, args=self.args)
-        # self.net.freeze_degree += 1
+        self.net.model = copy.deepcopy(self.net_secondary.model)
+        if self.net.freeze_degree < 4:
+            self.net.freeze_degree += 1
+            # self.net.further_freeze()
+
+        # self.net_secondary = MyModel(model=copy.deepcopy(self.net_secondary.model), freeze_degree=self.net_secondary.freeze_degree+1, args=self.args)        
         self.net_secondary.freeze_degree += 1
 
 
