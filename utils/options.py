@@ -47,14 +47,17 @@ def args_parser():
     parser.add_argument('--results_save', type=str, default='/', help='define fed results save folder')
     parser.add_argument('--start_saving', type=int, default=0, help='when to start saving models')
     
+    ### my arguments
     parser.add_argument('--window_size', type=int, default=10, help='Window size for moving avg. loss')
     parser.add_argument('--gradually_freezing', action='store_true', help='Enable Gradually Freezing')
-    # parser.add_argument('--switch_model', action='store_false')
     
     parser.add_argument('--switch_model', dest='switch_model', action='store_true', help='Enable Switch model in Gradually Freezing')
     parser.add_argument('--no-switch_model', dest='switch_model', action='store_false', help='Disable Switch model in Gradually Freezing')
     parser.set_defaults(switch_model=True)
 
+    parser.add_argument('--brute_force', dest='brute_force', action='store_true', help='Brute force list every possiable freezing degree')
+    parser.add_argument('--no-brute_force', dest='brute_force', action='store_false', help='Disable brute force list every possiable freezing degree')
+    parser.set_defaults(brute_force=False)
 
 
     args = parser.parse_args()

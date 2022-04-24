@@ -28,8 +28,42 @@ from constants import *
 
 import pdb
 
-def decide_further_freeze():
-    pass
+# [FL-7] FL Generate Secondary Model Method#2 global secondary_model aggregation
+def secondary_model_generator_1(g_trainer, old_weights, epoch):
+    g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights) # Weights after aggregation
+    
+    if (epoch+1) > WARM_UP_ROUNDS:
+        for idx, k in enumerate(g_trainer.weights_secondary.keys()):
+            # times 2 for weights and bias in single layer (LeNet-5)
+            if idx < g_trainer.net_secondary.freeze_degree * 2:  
+                # use old weights
+                # g_trainer.weights_secondary[k] = copy.deepcopy(old_weights[k])
+                g_trainer.weights_secondary[k] = old_weights[k]
+
+                print(k)
+                # print(old_weights['conv1.bias'])
+                # print(g_trainer.weights[k])
+                # print(g_trainer.weights_secondary[k])
+        # print(old_weights['conv1.bias'])
+        # print(g_trainer.weights['conv1.bias'])
+        # print(g_trainer.weights_secondary['conv1.bias'])
+    g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
+    return g_trainer.net_secondary.model
+
+
+def secondary_model_generator_2(g_trainer, epoch):
+    old_secondary_weights = g_trainer.net_secondary.model.state_dict() 
+    g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights)   
+    if (epoch+1) > WARM_UP_ROUNDS:
+        for idx, k in enumerate(g_trainer.weights_secondary.keys()):
+            # times 2 for weights and bias in single layer (LeNet-5)
+            if idx < g_trainer.net_secondary.freeze_degree * 2:  # use old weights
+                print(k)
+                g_trainer.weights_secondary[k] = copy.deepcopy(old_secondary_weights[k])
+    g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
+    return g_trainer.net_secondary.model
+
+
 
 if __name__ == '__main__':
     # parse args
@@ -58,6 +92,11 @@ if __name__ == '__main__':
     net_glob.train()
     net_glob_second = copy.deepcopy(net_glob)
     g_trainer = GlobalTrainer(args= args, net=net_glob, net_secondary=net_glob_second)
+
+    # setup each freezing degree model for brute force search
+    for idx in range(5):
+        g_trainer.brute_force_nets[idx] = MyModel(model=copy.deepcopy(g_trainer.net.model), args=args, freeze_degree=idx+1) 
+
 
     # training
     results_save_path = os.path.join(base_dir, 'fed/results.csv')
@@ -108,7 +147,6 @@ if __name__ == '__main__':
             loss_locals.append(copy.deepcopy(loss))
             local_trainer.net_primary.update_loss_train_delta(loss=loss)
             local_trainer.net_primary.loss_train.append(loss)
-            
 
             # increament global weights (aggregation)
             if g_trainer.weights is None:
@@ -116,34 +154,30 @@ if __name__ == '__main__':
             else: 
                 for k in g_trainer.weights.keys():
                     g_trainer.weights[k] += w_local[k]
-
+        
+        print('Local train done')
         # global primary_model aggregation
         for k in g_trainer.weights.keys():
             g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)
-        # g_trainer.net.model.load_state_dict(g_trainer.weights)
-        
-        # New Aggregation
-        old_weights = g_trainer.net.model.state_dict() 
+
+        # New Aggregation for primary model
+        old_weights = copy.deepcopy(g_trainer.net.model.state_dict())  # weights before aggregation
         for idx, k in enumerate(g_trainer.weights.keys()):
-            # times 2 for weights and bias in single layer (LeNet-5)
-            if idx < g_trainer.net.freeze_degree * 2:  # use old weights
-                print(k)
+            if idx < g_trainer.net.freeze_degree * 2:  
+                # use old weights
                 g_trainer.weights[k] = copy.deepcopy(old_weights[k])
-                # print(g_trainer.weights[k])
+                print(k)
         g_trainer.net.model.load_state_dict(g_trainer.weights)
         
+        # [FL-8] FL Generate Secondary Model Method#2 global secondary_model aggregation
+        # g_trainer.net_secondary.model = secondary_model_generator_1(g_trainer=copy.deepcopy(g_trainer), old_weights=copy.deepcopy(old_weights), epoch=e)
+        # g_trainer.net_secondary.model = secondary_model_generator_2(g_trainer=copy.deepcopy(g_trainer), epoch=e)
+        g_trainer.generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
+        g_trainer.generate_secondary_model_method_2(epoch=e)
 
+        if args.brute_force:
+            g_trainer.brute_force_search_models(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
 
-        # global secondary_model aggregation
-        old_secondary_weights = g_trainer.net_secondary.model.state_dict() 
-        g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights)   
-        if (e+1) > WARM_UP_ROUNDS:
-            for idx, k in enumerate(g_trainer.weights_secondary.keys()):
-                # times 2 for weights and bias in single layer (LeNet-5)
-                if idx < g_trainer.net_secondary.freeze_degree * 2:  # use old weights
-                    print(k)
-                    g_trainer.weights_secondary[k] = copy.deepcopy(old_secondary_weights[k])
-        g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
@@ -179,7 +213,6 @@ if __name__ == '__main__':
             g_trainer.net_secondary.model.eval()
             acc_test_2, loss_test_2 = test_img(g_trainer.net_secondary.model, dataset_test, args)
             print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test_2:.3f}, Test accuracy: {acc_test_2:.2f} [Secondary model: {g_trainer.net_secondary.freeze_degree}]')
-            
             g_trainer.net_secondary.update_loss_test_delta(loss=loss_test_2)
             g_trainer.net_secondary.loss_test.append(loss_test_2)
             g_trainer.net_secondary.acc.append(acc_test_2)
@@ -188,7 +221,14 @@ if __name__ == '__main__':
                 # g_trainer.models_loss_test_diff.append(loss_test_2 - loss_test)
                 g_trainer.models_loss_test_diff.append(abs(loss_test_2 - loss_test))
             
-
+            if args.brute_force:
+                for d in range(4):
+                    g_trainer.brute_force_nets[d].model.eval()
+                    acc_test, loss_test = test_img(g_trainer.brute_force_nets[d].model, dataset_test, args)
+                    print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test_2:.3f}, Test accuracy: {acc_test:.2f} [Brute-force search model: {g_trainer.brute_force_nets[d].freeze_degree}]')
+                    g_trainer.brute_force_nets[d].update_loss_test_delta(loss=loss_test)
+                    g_trainer.brute_force_nets[d].loss_test.append(loss_test)
+                    g_trainer.brute_force_nets[d].acc.append(acc_test)   
 
         if (e+1) % 50 == 0:
             best_save_path = os.path.join(base_dir, f'fed/best_{(e + 1)}.pt')
@@ -202,8 +242,6 @@ if __name__ == '__main__':
             print(f'Elapsed Time: {datetime.timedelta(seconds= now - start_time)}')
 
         # [Experiment \#2] Gradually freezing(decision at global side, freezing also at global side)
-        # print(f'Global Primary   Model Converged: {g_trainer.net.is_converged()}')
-        # print(f'Global Secondary Model Converged: {g_trainer.net_secondary.is_converged()}')
         
         # Switch model decision
         window_size_cnt += 1        
@@ -211,7 +249,6 @@ if __name__ == '__main__':
         print(f'Round {(e+1):3d}, Average Model Loss Difference: {avg_loss_diff}')
         if args.switch_model and g_trainer.net.is_converged() and g_trainer.net_secondary.is_converged():
             print("*** Both models are converged! ***")
-
 
             if  window_size_cnt >= args.window_size and not np.isnan(avg_loss_diff) and avg_loss_diff < LOSS_DIFF_THRESHOLD:
                 print(f"Secondary model is tolarably good: {avg_loss_diff}, let's switch model")
@@ -244,6 +281,11 @@ if __name__ == '__main__':
     print(g_trainer.net.acc)
     print(g_trainer.net_secondary.acc)
 
+    if args.brute_force:
+        for idx, k in enumerate(g_trainer.brute_force_nets):
+            print(k.acc)
+
+
     myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss", 1)
     myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")
     myplotter.plot_data(g_trainer.net_secondary.loss_test, "Secondary Test Loss")
@@ -251,12 +293,13 @@ if __name__ == '__main__':
 
     myplotter.legend()
     myplotter.save_figure(base_dir, "global_model_metrics")
-    # myplotter.plot_data(g_trainer.loss_train_delta, "Train Loss Delta")
-    # myplotter.plot_data(g_trainer.loss_test_delta, "Test Loss Delta")
     
     myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Accuracy", 2)
     myplotter.plot_data(g_trainer.net.acc, "Global Primary Model")
     myplotter.plot_data(g_trainer.net_secondary.acc, "Global Secondary Model")
+    if args.brute_force:
+        for idx, k in enumerate(g_trainer.brute_force_nets):
+            myplotter.plot_data(k.acc, f"Brute-Force Freeze degree: {idx}")
     myplotter.legend()
     myplotter.save_figure(base_dir, "global_model_accuracy")
 

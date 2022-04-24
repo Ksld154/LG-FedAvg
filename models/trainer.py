@@ -36,15 +36,70 @@ class GlobalTrainer(object):
         
         self.models_loss_test_diff = []
 
+        self.brute_force_nets = [None]*5
+        # self.brute_force_weights = []
+        
+
     def switch_model(self):
         self.net.model = copy.deepcopy(self.net_secondary.model)
         if self.net.freeze_degree < 4:
             self.net.freeze_degree += 1
-            # self.net.further_freeze()
+            self.net.further_freeze()
 
         # self.net_secondary = MyModel(model=copy.deepcopy(self.net_secondary.model), freeze_degree=self.net_secondary.freeze_degree+1, args=self.args)        
-        self.net_secondary.freeze_degree += 1
+        if self.net_secondary.freeze_degree < 4:
+            self.net_secondary.freeze_degree += 1
 
+    def brute_force_search_models(self, old_primary_weights ,epoch):
+        for d in range(4):
+            print(f'Round {(epoch+1):3d}, building brute-force search model w/ degree: {d}')
+            # old_weights = self.brute_force_nets[d].model.state_dict()
+            new_weights = copy.deepcopy(self.weights)   
+            
+            if (epoch+1) > WARM_UP_ROUNDS:
+                for idx, k in enumerate(new_weights.keys()):
+                    # times 2 for weights and bias in single layer (LeNet-5)
+                    if idx < self.brute_force_nets[d].freeze_degree * 2:  # use old weights
+                        # print(k)
+                        new_weights[k] = copy.deepcopy(old_primary_weights[k])
+            self.brute_force_nets[d].model.load_state_dict(new_weights)
+    
+    # copy from current primary model, for Gradually Freezing
+    def generate_secondary_model_method_1(self, old_primary_weights, epoch):
+        new_weights = copy.deepcopy(self.weights) # Weights after aggregation
+    
+        if (epoch+1) > WARM_UP_ROUNDS:
+            for idx, k in enumerate(new_weights.keys()):
+                # times 2 for weights and bias in single layer (LeNet-5)
+                if idx < self.net_secondary.freeze_degree * 2:  
+                    # use old weights
+                    new_weights[k] = copy.deepcopy(old_primary_weights[k])
+                    print(k)
+                    # print(old_weights['conv1.bias'])
+                    # print(g_trainer.weights[k])
+                    # print(g_trainer.weights_secondary[k])
+            # print(old_weights['conv1.bias'])
+            # print(g_trainer.weights['conv1.bias'])
+            # print(g_trainer.weights_secondary['conv1.bias'])
+        self.net_secondary.model.load_state_dict(new_weights)
+    
+
+    # independently maintain a secondary model, for FreezeOut
+    def generate_secondary_model_method_2(self, epoch):
+        new_weights = copy.deepcopy(self.weights) # Weights after aggregation  
+        old_secondary_weights = self.net_secondary.model.state_dict() 
+        
+        if (epoch+1) > WARM_UP_ROUNDS:
+            for idx, k in enumerate(new_weights.keys()):
+                # times 2 for weights and bias in single layer (LeNet-5)
+                if idx < self.net_secondary.freeze_degree * 2:  # use old weights
+                    new_weights[k] = copy.deepcopy(old_secondary_weights[k])
+                    print(k)
+        self.net_secondary.model.load_state_dict(new_weights)
+    
+
+    def test_model(self):
+        pass
 
 class LocalTrainer(object):
     def __init__(self, args, dataset=None, idxs=None, pretrain=False):
