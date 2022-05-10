@@ -3,6 +3,7 @@
 # Python version: 3.6
 
 import copy
+from email.mime import base
 from json import load
 import pickle
 from unittest import mock
@@ -24,45 +25,10 @@ import os
 from models.trainer import GlobalTrainer, LocalTrainer, MyModel
 from utils.tools import moving_average
 import utils.myplotter as myplotter
+import utils.csv_exporter as csv_exporter
 from constants import *
 
-import pdb
-
-# [FL-7] FL Generate Secondary Model Method#2 global secondary_model aggregation
-def secondary_model_generator_1(g_trainer, old_weights, epoch):
-    g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights) # Weights after aggregation
-    
-    if (epoch+1) > WARM_UP_ROUNDS:
-        for idx, k in enumerate(g_trainer.weights_secondary.keys()):
-            # times 2 for weights and bias in single layer (LeNet-5)
-            if idx < g_trainer.net_secondary.freeze_degree * 2:  
-                # use old weights
-                # g_trainer.weights_secondary[k] = copy.deepcopy(old_weights[k])
-                g_trainer.weights_secondary[k] = old_weights[k]
-
-                print(k)
-                # print(old_weights['conv1.bias'])
-                # print(g_trainer.weights[k])
-                # print(g_trainer.weights_secondary[k])
-        # print(old_weights['conv1.bias'])
-        # print(g_trainer.weights['conv1.bias'])
-        # print(g_trainer.weights_secondary['conv1.bias'])
-    g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
-    return g_trainer.net_secondary.model
-
-
-def secondary_model_generator_2(g_trainer, epoch):
-    old_secondary_weights = g_trainer.net_secondary.model.state_dict() 
-    g_trainer.weights_secondary = copy.deepcopy(g_trainer.weights)   
-    if (epoch+1) > WARM_UP_ROUNDS:
-        for idx, k in enumerate(g_trainer.weights_secondary.keys()):
-            # times 2 for weights and bias in single layer (LeNet-5)
-            if idx < g_trainer.net_secondary.freeze_degree * 2:  # use old weights
-                print(k)
-                g_trainer.weights_secondary[k] = copy.deepcopy(old_secondary_weights[k])
-    g_trainer.net_secondary.model.load_state_dict(g_trainer.weights_secondary)
-    return g_trainer.net_secondary.model
-
+# import pdb
 
 
 if __name__ == '__main__':
@@ -89,14 +55,28 @@ if __name__ == '__main__':
 
     # build model
     net_glob = get_model(args)
+    if args.load_pretrained:
+        pretrained_path = args.load_pretrained
+        print(pretrained_path)
+        if os.path.exists(pretrained_path):
+            print(f'Use pretrained model: {pretrained_path}')
+            net_glob.load_state_dict(torch.load(pretrained_path))
+            args.epochs -= WARM_UP_ROUNDS
+            
+        else:
+            print(f'[ERROR] Pretrain model not exists!')
+            print(f'{pretrained_path}')
+
+    
     net_glob.train()
     net_glob_second = copy.deepcopy(net_glob)
+
+
     g_trainer = GlobalTrainer(args= args, net=net_glob, net_secondary=net_glob_second)
 
     # setup each freezing degree model for brute force search
     for idx in range(5):
         g_trainer.brute_force_nets[idx] = MyModel(model=copy.deepcopy(g_trainer.net.model), args=args, freeze_degree=idx+1) 
-
 
     # training
     results_save_path = os.path.join(base_dir, 'fed/results.csv')
@@ -115,6 +95,8 @@ if __name__ == '__main__':
     switch_model_flag = False
     window_size_cnt = 0
     print(args.switch_model)
+
+
 
 
 
@@ -141,7 +123,7 @@ if __name__ == '__main__':
             # Train local primary model
             local_primary_model = copy.deepcopy(g_trainer.net.model)
             local_primary_model.train()
-            local_trainer.net_primary = MyModel(model=local_primary_model, args=args, freeze_degree=0)
+            local_trainer.net_primary = MyModel(model=local_primary_model, args=args, freeze_degree=g_trainer.net.freeze_degree)
             w_local, loss = local_trainer.train(net=local_trainer.net_primary.model.to(args.device), lr=lr)
 
             loss_locals.append(copy.deepcopy(loss))
@@ -158,22 +140,19 @@ if __name__ == '__main__':
         print('Local train done')
         # global primary_model aggregation
         for k in g_trainer.weights.keys():
-            g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)
+            g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)  # new weights (weights after aggregation)
 
         # New Aggregation for primary model
-        old_weights = copy.deepcopy(g_trainer.net.model.state_dict())  # weights before aggregation
+        old_weights = copy.deepcopy(g_trainer.net.model.state_dict())  # weights before aggregation?
         for idx, k in enumerate(g_trainer.weights.keys()):
-            if idx < g_trainer.net.freeze_degree * 2:  
-                # use old weights
+            if idx < g_trainer.net.freeze_degree * 2:   # frozen layers should use old weights
                 g_trainer.weights[k] = copy.deepcopy(old_weights[k])
                 print(k)
         g_trainer.net.model.load_state_dict(g_trainer.weights)
         
         # [FL-8] FL Generate Secondary Model Method#2 global secondary_model aggregation
-        # g_trainer.net_secondary.model = secondary_model_generator_1(g_trainer=copy.deepcopy(g_trainer), old_weights=copy.deepcopy(old_weights), epoch=e)
-        # g_trainer.net_secondary.model = secondary_model_generator_2(g_trainer=copy.deepcopy(g_trainer), epoch=e)
         g_trainer.generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
-        g_trainer.generate_secondary_model_method_2(epoch=e)
+        # g_trainer.generate_secondary_model_method_2(epoch=e)
 
         if args.brute_force:
             g_trainer.brute_force_search_models(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
@@ -254,19 +233,7 @@ if __name__ == '__main__':
                 print(f"Secondary model is tolarably good: {avg_loss_diff}, let's switch model")
                 g_trainer.switch_model()
                 window_size_cnt = 0
-        
-       
-        # [Experiment #1] Static Freeze global model
-        # if (e+1) % 20 == 0:
-        #     mock_gradually_freezing_degree += 1
-        #     for idx, l in enumerate(net_glob.layers):
-        #         print(l)
-        #         if (idx+1) <= mock_gradually_freezing_degree:
-        #             l.requires_grad_(False)
-        #     torchinfo.summary(net_glob, (1,3,32,32), device=args.device)
-        
-
-
+    
 
     end_time = time.time()
     print(f'Best model, iter: {best_epoch}, acc: {best_acc}')
@@ -281,10 +248,12 @@ if __name__ == '__main__':
     print(g_trainer.net.acc)
     print(g_trainer.net_secondary.acc)
 
+    csv_data = [g_trainer.net.acc, g_trainer.net_secondary.acc]
     if args.brute_force:
         for idx, k in enumerate(g_trainer.brute_force_nets):
             print(k.acc)
-
+            csv_data.append(k.acc)
+    csv_exporter.export(base_dir, 'accuracy.csv', csv_data)
 
     myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss", 1)
     myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")

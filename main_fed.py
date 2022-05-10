@@ -3,6 +3,7 @@
 # Python version: 3.6
 
 import copy
+import imp
 import pickle
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ from models.test import test_img
 import os
 
 import pdb
+import torchinfo
 
 if __name__ == '__main__':
     # parse args
@@ -46,6 +48,7 @@ if __name__ == '__main__':
 
     lr = args.lr
     results = []
+    freeze_degree = 1 # This is for Static Freezing!!!
 
     for iter in range(args.epochs):
         w_glob = None
@@ -92,10 +95,6 @@ if __name__ == '__main__':
                 best_acc = acc_test
                 best_epoch = iter
 
-            # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'fed/model_{}.pt'.format(iter + 1))
-            #     torch.save(net_glob.state_dict(), model_save_path)
-
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc]))
             final_results = np.array(results)
             final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc'])
@@ -107,4 +106,16 @@ if __name__ == '__main__':
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
 
+        # [Experiment #1] Static Freeze global model
+        if args.static_freeze and (iter+1) % 20 == 0:
+            for idx, l in enumerate(net_glob.layers):
+                # print(l)
+                if (idx+1) <= freeze_degree:
+                    l.requires_grad_(False)
+
+            torchinfo.summary(net_glob, (1,3,32,32), device=args.device)
+
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
+    accuracy = final_results.acc_test.to_numpy()
+    print(np.array2string(accuracy, separator=', '))
+    print(f'Static Freeze Degree: {freeze_degree}')

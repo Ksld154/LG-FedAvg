@@ -60,5 +60,11 @@ def args_parser():
     parser.set_defaults(brute_force=False)
 
 
+    parser.add_argument('--static_freeze', dest='static_freeze', action='store_true', help='Static Freezing')
+    parser.add_argument('--no-static_freeze', dest='static_freeze', action='store_false', help='Disable Static Freezing')
+    parser.set_defaults(static_freeze=False)
+    parser.add_argument('--load_pretrained', type=str, default='', help='Load pretrained  model path')
+
+
     args = parser.parse_args()
     return args
