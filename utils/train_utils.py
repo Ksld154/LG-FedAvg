@@ -2,6 +2,9 @@ from torchvision import datasets, transforms
 from models.Nets import MLP, CNNMnist, CNNCifar, LeNet
 from utils.sampling import iid, noniid
 
+from models.mobilenetv2 import MobileNetV2
+from models.mobilenet import MobileNet
+
 trans_mnist = transforms.Compose([transforms.ToTensor(),
                                   transforms.Normalize((0.1307,), (0.3081,))])
 trans_cifar10_train = transforms.Compose([transforms.RandomCrop(32, padding=4),
@@ -65,8 +68,13 @@ def get_model(args):
     
     elif args.model == 'lenet' and args.dataset == 'cifar10':
         net_glob = LeNet(args=args).to(args.device)
+    
+    elif args.model == 'mobilenet':
+        # net_glob = MobileNetV2(num_classes=args.num_classes).to(args.device)
+        net_glob = MobileNet(num_classes=args.num_classes).to(args.device)
+
     else:
         exit('Error: unrecognized model')
-    print(net_glob)
+    # print(net_glob)
 
     return net_glob

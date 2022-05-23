@@ -17,6 +17,7 @@ def legend():
 
 def save_figure(base_dir, filename):
     image_path = os.path.join(base_dir, filename)
+    print(image_path)
     plt.savefig(image_path)
 
 
@@ -41,4 +42,6 @@ def multiplot(all_data, y_label, title, figure_idx):
 
 def show():
     plt.legend(loc='lower right')
-    plt.show()
+    plt.show(block=False)
+    plt.pause(5)
+    plt.close()

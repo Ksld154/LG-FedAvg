@@ -3,6 +3,7 @@
 # Python version: 3.6
 
 import copy
+import datetime
 import imp
 import pickle
 import numpy as np
@@ -13,10 +14,31 @@ from utils.options import args_parser
 from utils.train_utils import get_data, get_model
 from models.Update import LocalUpdate
 from models.test import test_img
-import os
+import utils.myplotter
+import utils.csv_exporter
 
+import os
 import pdb
 import torchinfo
+
+class Experiment():
+    def plot_figure(self, all_results, output_dir):
+        utils.myplotter.multiplot(
+                all_data = all_results, 
+                y_label="Accuracy",
+                title="FL Static Freezing Accuracy", 
+                figure_idx=1
+            )
+
+        utils.myplotter.legend()
+        utils.myplotter.save_figure(output_dir, "FL_Static_Freezing_Accuracy.png")
+        utils.myplotter.show()
+    
+    def output_csv(self, data, output_dir, fields):
+        csv_file = os.path.join(output_dir, "result.csv")
+        print(csv_file)
+        utils.csv_exporter.export_csv(data=data, filepath=csv_file, fields=fields)
+
 
 if __name__ == '__main__':
     # parse args
@@ -48,7 +70,7 @@ if __name__ == '__main__':
 
     lr = args.lr
     results = []
-    freeze_degree = 1 # This is for Static Freezing!!!
+    freeze_degree = 0 # This is for Static Freezing!!!
 
     for iter in range(args.epochs):
         w_glob = None
@@ -119,3 +141,18 @@ if __name__ == '__main__':
     accuracy = final_results.acc_test.to_numpy()
     print(np.array2string(accuracy, separator=', '))
     print(f'Static Freeze Degree: {freeze_degree}')
+
+    acc_list = list(accuracy)
+    acc_list = [x / 100.0  for x in acc_list]
+    all_results = []
+    all_results.append(dict(name=f'Static Freeze: {freeze_degree} layers', acc=acc_list))
+
+
+    script_time = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    result_dir = f'./save/{args.dataset}/{args.model}_iid{args.iid}_num{args.num_users}_C{args.frac}_le{args.local_ep}/shard{args.shard_per_user}/{args.results_save}/{script_time}'
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir, exist_ok=True)
+
+    exp1 = Experiment()
+    exp1.output_csv(data=all_results, output_dir=result_dir, fields=['name', 'acc'])
+    exp1.plot_figure(all_results=all_results, output_dir=result_dir)

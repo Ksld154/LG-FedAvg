@@ -26,37 +26,39 @@ class DatasetSplit(Dataset):
 def test_img(net_g, datatest, args, return_probs=False, user_idx=-1):
     net_g.eval()
     # testing
-    test_loss = 0
-    correct = 0
-    data_loader = DataLoader(datatest, batch_size=args.bs)
-    l = len(data_loader)
+    with torch.no_grad():
+        test_loss = 0
+        correct = 0
+        data_loader = DataLoader(datatest, batch_size=args.bs)
+        l = len(data_loader)
+        # print(l)
 
-    probs = []
+        probs = []
 
-    for idx, (data, target) in enumerate(data_loader):
-        if args.gpu != -1:
-            data, target = data.to(args.device), target.to(args.device)
-        log_probs = net_g(data)
-        probs.append(log_probs)
+        for idx, (data, target) in enumerate(data_loader):
+            if args.gpu != -1:
+                data, target = data.to(args.device), target.to(args.device)
+            log_probs = net_g(data)
+            probs.append(log_probs)
 
-        # sum up batch loss
-        test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
-        # get the index of the max log-probability
-        y_pred = log_probs.data.max(1, keepdim=True)[1]
-        correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
+            # sum up batch loss
+            test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
+            # get the index of the max log-probability
+            y_pred = log_probs.data.max(1, keepdim=True)[1]
+            correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
 
-    test_loss /= len(data_loader.dataset)
-    accuracy = 100.00 * float(correct) / len(data_loader.dataset)
-    if args.verbose:
-        if user_idx < 0:
-            print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
-                test_loss, correct, len(data_loader.dataset), accuracy))
-        else:
-            print('Local model {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
-                user_idx, test_loss, correct, len(data_loader.dataset), accuracy))
+        test_loss /= len(data_loader.dataset)
+        accuracy = 100.00 * float(correct) / len(data_loader.dataset)
+        if args.verbose:
+            if user_idx < 0:
+                print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
+                    test_loss, correct, len(data_loader.dataset), accuracy))
+            else:
+                print('Local model {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
+                    user_idx, test_loss, correct, len(data_loader.dataset), accuracy))
 
-    if return_probs:
-        return accuracy, test_loss, torch.cat(probs)
+    # if return_probs:
+    #     return accuracy, test_loss, torch.cat(probs)
     return accuracy, test_loss
 
 

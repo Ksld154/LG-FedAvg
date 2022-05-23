@@ -1,5 +1,8 @@
 import copy
+import datetime
 from multiprocessing.spawn import import_main_path
+import random
+import time
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
@@ -110,17 +113,22 @@ class LocalTrainer(object):
         self.pretrain = pretrain
 
         self.freeze_degree = 0
-
         self.net_primary = MyModel(model=None, args=args, freeze_degree=0)
-        # self.net_secondary = MyModel(model=None, args=args)
         self.model_loss_diff = []
+       
+        self.trainable_params = None
+        self.local_train_time = None
+        self.upload_time = None
+        self.download_time = None
 
 
     def train(self, net, lr=0.1):
+        self.local_train_time = None
+        local_train_start = time.time()
+        
         # train and update
         net.train()
         optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, momentum=0.5)
-        # torchinfo.summary(net, (1, 3, 32, 32))
 
         epoch_loss = []
         if self.pretrain:
@@ -142,10 +150,35 @@ class LocalTrainer(object):
                 batch_loss.append(loss.item())
 
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
+        local_train_end = time.time()
+        self.local_train_time = datetime.timedelta(seconds= local_train_end-local_train_start)
+
+        total_params = sum(p.numel() for p in net.parameters())
+        frozen_params = sum(p.numel() for p in net.parameters() if not p.requires_grad)
+        self.trainable_params = total_params - frozen_params
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
+    
+    def calc_train_and_transmission_time(self):
+        train_time = self.local_train_time
 
+        payload_size = self.trainable_params * 4 * 8 # (in bits)
+        # print(payload_size)
+
+        upload_bandwidth = random.uniform(MIN_UPLOAD_BANDWIDTH, MAX_UPLOAD_BANDWIDTH) * (10**6)
+        upload_time = payload_size / upload_bandwidth
+        # print(upload_bandwidth)
+        # print(upload_time)
+
+        self.upload_time = datetime.timedelta(seconds=upload_time)
+        # print(f'Train Time: {train_time}')
+        # print(f'Upload Time: {self.upload_time}')
+
+        download_bandwidth = random.uniform(MIN_DOWNLOAD_BANDWIDTH, MAX_DOWNLOAD_BANDWIDTH) * (10**6)
+        download_time = payload_size / download_bandwidth
+        self.download_time = datetime.timedelta(seconds=download_time)
+        # print(f'Download Time: {self.download_time}')
 
 
 

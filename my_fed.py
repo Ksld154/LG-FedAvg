@@ -30,6 +30,23 @@ from constants import *
 
 # import pdb
 
+class Experiment():
+    def plot_figure(self, all_results, output_dir):
+        myplotter.multiplot(
+                all_data = all_results, 
+                y_label="Accuracy",
+                title="FL Gradually Freezing Accuracy", 
+                figure_idx=1
+            )
+
+        myplotter.legend()
+        myplotter.save_figure(output_dir, "FL_Gradually_Freezing_Accuracy.png")
+        myplotter.show()
+    
+    def output_csv(self, data, output_dir, fields):
+        csv_file = os.path.join(output_dir, "result.csv")
+        print(csv_file)
+        csv_exporter.export_csv(data=data, filepath=csv_file, fields=fields)
 
 if __name__ == '__main__':
     # parse args
@@ -95,6 +112,7 @@ if __name__ == '__main__':
     switch_model_flag = False
     window_size_cnt = 0
     print(args.switch_model)
+    total_time = datetime.timedelta(seconds=0)
 
 
 
@@ -114,6 +132,11 @@ if __name__ == '__main__':
         m = max(int(args.frac * args.num_users), 1)  # number of workers per round
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         print(f'Round {(e+1):3d}, lr: {lr:.6f}, {idxs_users}')
+
+        
+        # max_upload_time = datetime.timedelta(seconds=0)
+        # max_download_time = datetime.timedelta(seconds=0)
+        # max_local_train_time = datetime.timedelta(seconds=0)
 
 
         for idx in idxs_users:
@@ -136,7 +159,19 @@ if __name__ == '__main__':
             else: 
                 for k in g_trainer.weights.keys():
                     g_trainer.weights[k] += w_local[k]
+            
+            local_trainer.calc_train_and_transmission_time()
         
+        active_local_trainers = [all_local_trainers[i] for i in idxs_users]
+
+        max_local_train_time = max(local_trainer.local_train_time for local_trainer in all_local_trainers)
+        max_upload_time = max(local_trainer.upload_time for local_trainer in all_local_trainers)
+        max_download_time = max(local_trainer.download_time for local_trainer in all_local_trainers)
+        iteration_round_time = max_local_train_time + max_upload_time + max_download_time
+        total_time += iteration_round_time
+        print(f'Iteration round {e}, time elapsed:{iteration_round_time}')
+
+
         print('Local train done')
         # global primary_model aggregation
         for k in g_trainer.weights.keys():
@@ -238,6 +273,8 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Best model, iter: {best_epoch}, acc: {best_acc}')
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
+    print(f'Total Time: {total_time}')
+
     accuracy = final_results.acc_test.to_numpy()
 
 
@@ -259,7 +296,6 @@ if __name__ == '__main__':
     myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")
     myplotter.plot_data(g_trainer.net_secondary.loss_test, "Secondary Test Loss")
     myplotter.plot_data(g_trainer.net.loss_train, "Primary Train Loss")
-
     myplotter.legend()
     myplotter.save_figure(base_dir, "global_model_metrics")
     
@@ -271,10 +307,20 @@ if __name__ == '__main__':
             myplotter.plot_data(k.acc, f"Brute-Force Freeze degree: {idx}")
     myplotter.legend()
     myplotter.save_figure(base_dir, "global_model_accuracy")
-
     
     myplotter.show()
 
 
     print(np.array2string(accuracy, separator=', '))
     
+
+
+    # export new version .csv file and plot .png file
+    acc_list = list(accuracy)
+    acc_list = [x / 100.0  for x in acc_list]
+    all_results = []
+    all_results.append(dict(name=f'Gradually Freeze: Primary Model', acc=acc_list))
+
+    exp1 = Experiment()
+    exp1.output_csv(data=all_results, output_dir=base_dir, fields=['name', 'acc'])
+    exp1.plot_figure(all_results=all_results, output_dir=base_dir)

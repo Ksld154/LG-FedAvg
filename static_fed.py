@@ -264,7 +264,6 @@ if __name__ == '__main__':
         print(acc_list)
         print(np.array2string(accuracy, separator=', '))
         all_accs.append(accuracy)
-        # all_results.append(dict(name=static_freeze_exp.name, acc=accuracy/100.0))
         all_results.append(dict(name=static_freeze_exp.name, acc=acc_list))
 
     
