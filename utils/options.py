@@ -48,7 +48,7 @@ def args_parser():
     parser.add_argument('--start_saving', type=int, default=0, help='when to start saving models')
     
     ### my arguments
-    parser.add_argument('--window_size', type=int, default=10, help='Window size for moving avg. loss')
+    parser.add_argument('--window_size', type=int, default=5, help='Window size for moving avg. loss')
     parser.add_argument('--gradually_freezing', action='store_true', help='Enable Gradually Freezing')
     
     parser.add_argument('--switch_model', dest='switch_model', action='store_true', help='Enable Switch model in Gradually Freezing')
@@ -64,6 +64,8 @@ def args_parser():
     parser.add_argument('--no-static_freeze', dest='static_freeze', action='store_false', help='Disable Static Freezing')
     parser.set_defaults(static_freeze=False)
     parser.add_argument('--load_pretrained', type=str, default='', help='Load pretrained  model path')
+
+    parser.add_argument('--static_freeze_candidates', type=int, default=5, help='Static Freeze candidates numbers')
 
 
     args = parser.parse_args()

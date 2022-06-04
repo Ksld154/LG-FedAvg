@@ -23,7 +23,7 @@ import os
 
 # my library
 from models.trainer import GlobalTrainer, LocalTrainer, MyModel
-from utils.tools import moving_average
+from utils.tools import moving_average, convert_size
 import utils.myplotter as myplotter
 import utils.csv_exporter as csv_exporter
 from constants import *
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     window_size_cnt = 0
     print(args.switch_model)
     total_time = datetime.timedelta(seconds=0)
-
+    total_trainable_params = 0
 
 
 
@@ -132,11 +132,6 @@ if __name__ == '__main__':
         m = max(int(args.frac * args.num_users), 1)  # number of workers per round
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         print(f'Round {(e+1):3d}, lr: {lr:.6f}, {idxs_users}')
-
-        
-        # max_upload_time = datetime.timedelta(seconds=0)
-        # max_download_time = datetime.timedelta(seconds=0)
-        # max_local_train_time = datetime.timedelta(seconds=0)
 
 
         for idx in idxs_users:
@@ -160,33 +155,50 @@ if __name__ == '__main__':
                 for k in g_trainer.weights.keys():
                     g_trainer.weights[k] += w_local[k]
             
-            local_trainer.calc_train_and_transmission_time()
+            local_trainer.calc_train_and_transmission_time(active_workers= len(idxs_users))
+            total_trainable_params += local_trainer.trainable_params
+            print(local_trainer.trainable_params)
+
         
         active_local_trainers = [all_local_trainers[i] for i in idxs_users]
-
-        max_local_train_time = max(local_trainer.local_train_time for local_trainer in all_local_trainers)
-        max_upload_time = max(local_trainer.upload_time for local_trainer in all_local_trainers)
-        max_download_time = max(local_trainer.download_time for local_trainer in all_local_trainers)
+        max_local_train_time = max(local_trainer.local_train_time for local_trainer in active_local_trainers)
+        max_upload_time = max(local_trainer.upload_time for local_trainer in active_local_trainers)
+        max_download_time = max(local_trainer.download_time for local_trainer in active_local_trainers)
+        
         iteration_round_time = max_local_train_time + max_upload_time + max_download_time
         total_time += iteration_round_time
-        print(f'Iteration round {e}, time elapsed:{iteration_round_time}')
+        g_trainer.transmission_time += max_upload_time + max_download_time
+        print(f'Round {(e+1):3d}, time elapsed:{iteration_round_time}')
+       
+        g_trainer.transmission_volume = total_trainable_params * 4 * 8
+        g_trainer.transmission_volume_history.append(g_trainer.transmission_volume)
+        print(f'Round {(e+1):3d}, cumulated transmission: {convert_size(g_trainer.transmission_volume)}')
+        
 
-
-        print('Local train done')
         # global primary_model aggregation
         for k in g_trainer.weights.keys():
             g_trainer.weights[k] = torch.div(g_trainer.weights[k], m)  # new weights (weights after aggregation)
 
+
         # New Aggregation for primary model
         old_weights = copy.deepcopy(g_trainer.net.model.state_dict())  # weights before aggregation?
+
         for idx, k in enumerate(g_trainer.weights.keys()):
-            if idx < g_trainer.net.freeze_degree * 2:   # frozen layers should use old weights
-                g_trainer.weights[k] = copy.deepcopy(old_weights[k])
-                print(k)
-        g_trainer.net.model.load_state_dict(g_trainer.weights)
+            # frozen layers should use old weights
+            if any(substr in k for substr in g_trainer.net.frozen_layers_name):
+                # print(f'{g_trainer.net.freeze_degree} {k}')
+                g_trainer.weights[k] = copy.deepcopy(old_weights[k]) 
         
+        g_trainer.net.model.load_state_dict(g_trainer.weights)
+
+
+       
+        # exit(0)
+       
         # [FL-8] FL Generate Secondary Model Method#2 global secondary_model aggregation
-        g_trainer.generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
+        # g_trainer.generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
+        g_trainer.new_generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
+
         # g_trainer.generate_secondary_model_method_2(epoch=e)
 
         if args.brute_force:
@@ -231,9 +243,9 @@ if __name__ == '__main__':
             g_trainer.net_secondary.loss_test.append(loss_test_2)
             g_trainer.net_secondary.acc.append(acc_test_2)
 
-            if (e+1) > WARM_UP_ROUNDS:
+            # if (e+1) > WARM_UP_ROUNDS:
                 # g_trainer.models_loss_test_diff.append(loss_test_2 - loss_test)
-                g_trainer.models_loss_test_diff.append(abs(loss_test_2 - loss_test))
+            g_trainer.models_loss_test_diff.append(abs(loss_test_2 - loss_test))
             
             if args.brute_force:
                 for d in range(4):
@@ -319,8 +331,15 @@ if __name__ == '__main__':
     acc_list = list(accuracy)
     acc_list = [x / 100.0  for x in acc_list]
     all_results = []
-    all_results.append(dict(name=f'Gradually Freeze: Primary Model', acc=acc_list))
+    all_results.append(dict(name=f'Gradually Freeze: Primary Model', 
+                            acc=acc_list, 
+                            total_time=total_time, 
+                            total_trainable_params=total_trainable_params,
+                            transmission_time=g_trainer.transmission_time,
+                            transmission_volume=g_trainer.transmission_volume,
+                            transmission_volume_readable=convert_size(g_trainer.transmission_volume),
+                            transmission_volume_history=g_trainer.transmission_volume_history))
 
     exp1 = Experiment()
-    exp1.output_csv(data=all_results, output_dir=base_dir, fields=['name', 'acc'])
+    exp1.output_csv(data=all_results, output_dir=base_dir, fields=['name', 'acc', 'total_time', 'total_trainable_params', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history'])
     exp1.plot_figure(all_results=all_results, output_dir=base_dir)

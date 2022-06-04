@@ -127,6 +127,7 @@ class LeNet(nn.Module):
         #                     ['fc1.weight', 'fc1.bias'],
         #                     ]
         self.layers = [self.conv1, self.conv2, self.fc1, self.fc2, self.fc3]
+        self.layer_names = ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
 
         self.weight_keys = [['fc1.weight', 'fc1.bias'],
                             ['fc2.weight', 'fc2.bias'],

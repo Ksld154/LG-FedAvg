@@ -15,6 +15,7 @@ from constants import WARM_UP_ROUNDS
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
+from utils.tools import convert_size
 from models.Update import LocalUpdate
 from models.test import test_img
 import os
@@ -28,7 +29,9 @@ class Experiment():
     def __init__(self, args) -> None:
         self.args = args
         self.results = []
+        
         self.results_dir = None
+        self.base_filename = ''
     
     def pre_train(self, net_glob, output_dir):
         # results_save_path = os.path.join(self.base_dir, 'fed/results.csv')
@@ -110,11 +113,12 @@ class Experiment():
             )
 
         utils.myplotter.legend()
-        utils.myplotter.save_figure(output_dir, "FL_Static_Freezing_Accuracy.png")
+        utils.myplotter.save_figure(output_dir, f"{self.base_filename}_FL_Static_Freezing_Accuracy.png")
         utils.myplotter.show()
     
     def output_csv(self, data, output_dir, fields):
-        csv_file = os.path.join(output_dir, "result.csv")
+        
+        csv_file = os.path.join(output_dir, f"{self.base_filename}_result.csv")
         print(csv_file)
         utils.csv_exporter.export_csv(data=data, filepath=csv_file, fields=fields)
 
@@ -131,6 +135,11 @@ class StaticFreeze():
         self.net_best = None
 
         self.final_results = None
+        self.total_time = datetime.timedelta(seconds=0)
+        self.transmission_time = datetime.timedelta(seconds=0)
+        self.transmission_volume = 0
+        self.transmission_volume_history = []
+        
         
 
     # This is for Static Freezing Training !!!
@@ -142,7 +151,8 @@ class StaticFreeze():
         lr = self.args.lr
         results = []
         final_results = None
-        # freeze_degree = 1 
+        total_time = datetime.timedelta(seconds=0)
+
 
         # [Experiment #1] Static Freeze global model
         for idx, l in enumerate(net_glob.layers):
@@ -160,6 +170,9 @@ class StaticFreeze():
             idxs_users = np.random.choice(range(self.args.num_users), m, replace=False)
             print(f'Round {(epoch+1):3d}, lr: {lr:.6f}, {idxs_users}')
 
+            max_upload_time = datetime.timedelta(seconds=0)
+            max_download_time = datetime.timedelta(seconds=0)
+            max_local_train_time = datetime.timedelta(seconds=0)
 
             for idx in idxs_users:
                 local = LocalUpdate(args=self.args, dataset=dataset_train, idxs=dict_users_train[idx])
@@ -173,6 +186,21 @@ class StaticFreeze():
                 else:
                     for k in w_glob.keys():
                         w_glob[k] += w_local[k]
+
+                local.calc_train_and_transmission_time()
+                max_local_train_time = max(local.local_train_time, max_local_train_time)
+                max_upload_time = max(local.upload_time, max_upload_time)
+                max_download_time = max(local.download_time, max_download_time)
+                
+                self.transmission_volume += local.trainable_params*4*8  # in bits
+            
+            iteration_round_time = max_local_train_time + max_upload_time + max_download_time
+            total_time += iteration_round_time
+            print(f'Round {(epoch+1):3d}, current round duration: {iteration_round_time}')
+            print(f'Round {(epoch+1):3d}, cumulated transmission: {convert_size(self.transmission_volume)}')
+            
+            self.transmission_time +=  max_upload_time + max_download_time
+            self.transmission_volume_history.append(self.transmission_volume)
 
             lr *= self.args.lr_decay
 
@@ -207,12 +235,15 @@ class StaticFreeze():
                 model_save_path = os.path.join(self.base_dir, 'fed/model_{}.pt'.format(epoch + 1))
                 torch.save(self.net_best.state_dict(), best_save_path)
                 torch.save(net_glob.state_dict(), model_save_path)
+        
+        print(f'Total duration: {total_time}')
 
         final_results = np.array(self.results)
         final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc'])
         final_results.to_csv(results_save_path, index=False)
 
         self.final_results = final_results
+        self.total_time = total_time
 
 
 
@@ -236,17 +267,28 @@ if __name__ == '__main__':
     net_glob.train()
     
     exp1 = Experiment(args=args)
+    exp1.base_filename = f"{args.model}_e={args.epochs}_window={args.window_size}_static"
+    print(exp1.base_filename)
     pretrained_net_glob, pre_trained_results = exp1.pre_train(net_glob, result_dir)
     
     
     all_results = []
     all_accs = []
-    for degree in range(5):
+    
+    if args.model == 'mobilenet':
+        degree_step = 3
+    elif args.model == 'resnet':
+        degree_step = 2
+    else:
+        degree_step = 1
+
+    for d in range(args.static_freeze_candidates):
+        degree = d * degree_step
+        
         base_dir = f'./save/{args.dataset}/{args.model}_iid{args.iid}_num{args.num_users}_C{args.frac}_le{args.local_ep}/shard{args.shard_per_user}/{args.results_save}/{script_time}/static_{degree}/'
         print(base_dir)
         if not os.path.exists(os.path.join(base_dir, 'fed')):
             os.makedirs(os.path.join(base_dir, 'fed'), exist_ok=True)
-        
         
         static_freeze_exp = StaticFreeze(args=args, name=f'Static Freeze: {degree} layers', results=copy.deepcopy(pre_trained_results), base_dir=base_dir)
         if degree == 0:
@@ -264,7 +306,14 @@ if __name__ == '__main__':
         print(acc_list)
         print(np.array2string(accuracy, separator=', '))
         all_accs.append(accuracy)
-        all_results.append(dict(name=static_freeze_exp.name, acc=acc_list))
+        all_results.append(
+            dict(name=static_freeze_exp.name, 
+                    acc=acc_list, 
+                    total_time=static_freeze_exp.total_time, 
+                    transmission_time=static_freeze_exp.transmission_time, 
+                    transmission_volume=static_freeze_exp.transmission_volume,
+                    transmission_volume_readable=convert_size(static_freeze_exp.transmission_volume),
+                    transmission_volume_history=static_freeze_exp.transmission_volume_history))
 
     
     print(all_results)
@@ -274,5 +323,5 @@ if __name__ == '__main__':
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
 
 
-    exp1.output_csv(data=all_results, output_dir=result_dir, fields=['name', 'acc'])
+    exp1.output_csv(data=all_results, output_dir=result_dir, fields=['name', 'acc', 'total_time', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history'])
     exp1.plot_figure(all_results=all_results, output_dir=result_dir)

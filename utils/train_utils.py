@@ -4,6 +4,7 @@ from utils.sampling import iid, noniid
 
 from models.mobilenetv2 import MobileNetV2
 from models.mobilenet import MobileNet
+from models.resnet import ResNet18
 
 trans_mnist = transforms.Compose([transforms.ToTensor(),
                                   transforms.Normalize((0.1307,), (0.3081,))])
@@ -72,7 +73,10 @@ def get_model(args):
     elif args.model == 'mobilenet':
         # net_glob = MobileNetV2(num_classes=args.num_classes).to(args.device)
         net_glob = MobileNet(num_classes=args.num_classes).to(args.device)
-
+    elif args.model == 'mobilenetv2':
+        net_glob = MobileNetV2(num_classes=args.num_classes).to(args.device)
+    elif args.model == 'resnet':
+        net_glob = ResNet18(num_classes=args.num_classes).to(args.device)
     else:
         exit('Error: unrecognized model')
     # print(net_glob)

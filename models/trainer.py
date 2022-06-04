@@ -42,16 +42,23 @@ class GlobalTrainer(object):
         self.brute_force_nets = [None]*5
         # self.brute_force_weights = []
         
+        self.transmission_time = datetime.timedelta(seconds=0)
+        self.total_time = datetime.timedelta(seconds=0)
+        self.transmission_volume = 0
+        self.transmission_volume_history = []
 
     def switch_model(self):
+        if self.net.freeze_degree == len(self.net.model.layers):
+            print('Exceed layer limit, do nothing')
+            return
         self.net.model = copy.deepcopy(self.net_secondary.model)
-        if self.net.freeze_degree < 4:
+        if self.net.freeze_degree < len(self.net.model.layers):
             self.net.freeze_degree += 1
             self.net.further_freeze()
 
-        # self.net_secondary = MyModel(model=copy.deepcopy(self.net_secondary.model), freeze_degree=self.net_secondary.freeze_degree+1, args=self.args)        
-        if self.net_secondary.freeze_degree < 4:
+        if self.net_secondary.freeze_degree < len(self.net.model.layers):
             self.net_secondary.freeze_degree += 1
+            self.net_secondary.further_freeze()
 
     def brute_force_search_models(self, old_primary_weights ,epoch):
         for d in range(4):
@@ -100,6 +107,19 @@ class GlobalTrainer(object):
                     print(k)
         self.net_secondary.model.load_state_dict(new_weights)
     
+        # copy from current primary model, for Gradually Freezing
+    def new_generate_secondary_model_method_1(self, old_primary_weights, epoch):
+        new_weights = copy.deepcopy(self.weights) # Weights after aggregation
+
+        secondary_model_frozen_names = self.net.model.layer_names[:self.net_secondary.freeze_degree]
+        print(secondary_model_frozen_names)
+
+        for idx, k in enumerate(new_weights.keys()):
+            if any(substr in k for substr in secondary_model_frozen_names):
+                # use old weights
+                new_weights[k] = copy.deepcopy(old_primary_weights[k])
+                # print(f'secondary: {self.net_secondary.freeze_degree} {k}')
+        self.net_secondary.model.load_state_dict(new_weights)
 
     def test_model(self):
         pass
@@ -160,13 +180,13 @@ class LocalTrainer(object):
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
     
-    def calc_train_and_transmission_time(self):
+    def calc_train_and_transmission_time(self, active_workers=1):
         train_time = self.local_train_time
 
         payload_size = self.trainable_params * 4 * 8 # (in bits)
         # print(payload_size)
 
-        upload_bandwidth = random.uniform(MIN_UPLOAD_BANDWIDTH, MAX_UPLOAD_BANDWIDTH) * (10**6)
+        upload_bandwidth = random.uniform(MIN_UPLOAD_BANDWIDTH, MAX_UPLOAD_BANDWIDTH) * (10**6) / active_workers
         upload_time = payload_size / upload_bandwidth
         # print(upload_bandwidth)
         # print(upload_time)
@@ -175,7 +195,7 @@ class LocalTrainer(object):
         # print(f'Train Time: {train_time}')
         # print(f'Upload Time: {self.upload_time}')
 
-        download_bandwidth = random.uniform(MIN_DOWNLOAD_BANDWIDTH, MAX_DOWNLOAD_BANDWIDTH) * (10**6)
+        download_bandwidth = random.uniform(MIN_DOWNLOAD_BANDWIDTH, MAX_DOWNLOAD_BANDWIDTH) * (10**6) / active_workers
         download_time = payload_size / download_bandwidth
         self.download_time = datetime.timedelta(seconds=download_time)
         # print(f'Download Time: {self.download_time}')
@@ -194,6 +214,8 @@ class MyModel(object):
 
         self.loss_test = []
         self.loss_test_delta = []
+
+        self.frozen_layers_name = []
     
     def update_loss_train_delta(self, loss):
         if self.loss_train:
@@ -214,5 +236,6 @@ class MyModel(object):
         for idx, l in enumerate(self.model.layers):
             if (idx+1) <= self.freeze_degree:
                 l.requires_grad_(False)
+        self.frozen_layers_name.append(self.model.layer_names[self.freeze_degree-1])
         # torchinfo.summary(net, (1, 3, 32, 32), device=self.args.device)
         # return net

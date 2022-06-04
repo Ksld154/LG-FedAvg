@@ -32,6 +32,8 @@ class MobileNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(32, track_running_stats=False)
         self.layers = self._make_layers(in_planes=32)
         self.linear = nn.Linear(1024, num_classes)
+        self.layer_names = ['layers.0', 'layers.1', 'layers.2', 'layers.3', 'layers.4', 'layers.5', 'layers.6', 'layers.7', 'layers.8', 'layers.9', 'layers.10', 'layers.11', 'layers.12']
+
 
     def _make_layers(self, in_planes):
         layers = []
