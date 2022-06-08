@@ -79,13 +79,13 @@ class LocalUpdate(object):
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
-    def calc_train_and_transmission_time(self):
+    def calc_train_and_transmission_time(self, active_workers=1):
         train_time = self.local_train_time
 
         payload_size = self.trainable_params * 4 * 8 # (in bits)
         # print(payload_size)
 
-        upload_bandwidth = random.uniform(MIN_UPLOAD_BANDWIDTH, MAX_UPLOAD_BANDWIDTH) * (10**6)
+        upload_bandwidth = random.uniform(MIN_UPLOAD_BANDWIDTH, MAX_UPLOAD_BANDWIDTH) * (10**6) / active_workers
         upload_time = payload_size / upload_bandwidth
         # print(upload_bandwidth)
         # print(upload_time)
@@ -94,7 +94,7 @@ class LocalUpdate(object):
         # print(f'Train Time: {train_time}')
         # print(f'Upload Time: {self.upload_time}')
 
-        download_bandwidth = random.uniform(MIN_DOWNLOAD_BANDWIDTH, MAX_DOWNLOAD_BANDWIDTH) * (10**6)
+        download_bandwidth = random.uniform(MIN_DOWNLOAD_BANDWIDTH, MAX_DOWNLOAD_BANDWIDTH) * (10**6) / active_workers
         download_time = payload_size / download_bandwidth
         self.download_time = datetime.timedelta(seconds=download_time)
         # print(f'Download Time: {self.download_time}')

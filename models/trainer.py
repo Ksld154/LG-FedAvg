@@ -47,6 +47,9 @@ class GlobalTrainer(object):
         self.transmission_volume = 0
         self.transmission_volume_history = []
 
+        self.transmission_time_history = []
+        self.total_time_history = []
+
     def switch_model(self):
         if self.net.freeze_degree == len(self.net.model.layers):
             print('Exceed layer limit, do nothing')

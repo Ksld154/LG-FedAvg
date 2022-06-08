@@ -14,7 +14,7 @@ def export(base_dir, filename, data):
 
 def export_csv(data: 'list[dict]', filepath: str, fields: 'list[str]'):
     with open(file=filepath, mode='w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fields)
+        writer = csv.DictWriter(csvfile, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
 
         for d in data:
@@ -42,9 +42,6 @@ def import_simple_csv(filepath: str) -> List[dict]:
         
         rows = []
         for row in reader:
-            # only read first row since we don't need secondary trainer's data
-            # row = eval(row)
-            # print(row)
             rows.append(row)
             break
     

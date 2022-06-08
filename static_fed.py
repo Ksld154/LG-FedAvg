@@ -139,6 +139,9 @@ class StaticFreeze():
         self.transmission_time = datetime.timedelta(seconds=0)
         self.transmission_volume = 0
         self.transmission_volume_history = []
+
+        self.total_time_history = []
+        self.transmission_time_history = []
         
         
 
@@ -187,7 +190,7 @@ class StaticFreeze():
                     for k in w_glob.keys():
                         w_glob[k] += w_local[k]
 
-                local.calc_train_and_transmission_time()
+                local.calc_train_and_transmission_time(active_workers=len(idxs_users))
                 max_local_train_time = max(local.local_train_time, max_local_train_time)
                 max_upload_time = max(local.upload_time, max_upload_time)
                 max_download_time = max(local.download_time, max_download_time)
@@ -198,9 +201,14 @@ class StaticFreeze():
             total_time += iteration_round_time
             print(f'Round {(epoch+1):3d}, current round duration: {iteration_round_time}')
             print(f'Round {(epoch+1):3d}, cumulated transmission: {convert_size(self.transmission_volume)}')
+            print(f'Round {(epoch+1):3d}, transmission:{max_upload_time + max_download_time}')
+            print(f'Round {(epoch+1):3d}, local train :{max_local_train_time}')
             
             self.transmission_time +=  max_upload_time + max_download_time
             self.transmission_volume_history.append(self.transmission_volume)
+            
+            self.transmission_time_history.append(self.transmission_time)
+            self.total_time_history.append(self.total_time)
 
             lr *= self.args.lr_decay
 
@@ -313,7 +321,9 @@ if __name__ == '__main__':
                     transmission_time=static_freeze_exp.transmission_time, 
                     transmission_volume=static_freeze_exp.transmission_volume,
                     transmission_volume_readable=convert_size(static_freeze_exp.transmission_volume),
-                    transmission_volume_history=static_freeze_exp.transmission_volume_history))
+                    transmission_volume_history=static_freeze_exp.transmission_volume_history,
+                    total_time_history=static_freeze_exp.total_time_history,
+                    transmission_time_history=static_freeze_exp.transmission_time_history))
 
     
     print(all_results)
@@ -323,5 +333,5 @@ if __name__ == '__main__':
     print(f'Total training time: {datetime.timedelta(seconds= end_time - start_time)}')
 
 
-    exp1.output_csv(data=all_results, output_dir=result_dir, fields=['name', 'acc', 'total_time', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history'])
+    exp1.output_csv(data=all_results, output_dir=result_dir, fields=['name', 'acc', 'total_time', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history', 'total_time_history', 'transmission_time_history'])
     exp1.plot_figure(all_results=all_results, output_dir=result_dir)

@@ -169,11 +169,16 @@ if __name__ == '__main__':
         total_time += iteration_round_time
         g_trainer.transmission_time += max_upload_time + max_download_time
         print(f'Round {(e+1):3d}, time elapsed:{iteration_round_time}')
+        print(f'Round {(e+1):3d}, transmission:{max_upload_time + max_download_time}')
+        print(f'Round {(e+1):3d}, local train :{max_local_train_time}')
+
        
         g_trainer.transmission_volume = total_trainable_params * 4 * 8
         g_trainer.transmission_volume_history.append(g_trainer.transmission_volume)
         print(f'Round {(e+1):3d}, cumulated transmission: {convert_size(g_trainer.transmission_volume)}')
         
+        g_trainer.transmission_time_history.append(g_trainer.transmission_time)
+        g_trainer.total_time_history.append(total_time)
 
         # global primary_model aggregation
         for k in g_trainer.weights.keys():
@@ -243,8 +248,6 @@ if __name__ == '__main__':
             g_trainer.net_secondary.loss_test.append(loss_test_2)
             g_trainer.net_secondary.acc.append(acc_test_2)
 
-            # if (e+1) > WARM_UP_ROUNDS:
-                # g_trainer.models_loss_test_diff.append(loss_test_2 - loss_test)
             g_trainer.models_loss_test_diff.append(abs(loss_test_2 - loss_test))
             
             if args.brute_force:
@@ -304,23 +307,23 @@ if __name__ == '__main__':
             csv_data.append(k.acc)
     csv_exporter.export(base_dir, 'accuracy.csv', csv_data)
 
-    myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss", 1)
-    myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")
-    myplotter.plot_data(g_trainer.net_secondary.loss_test, "Secondary Test Loss")
-    myplotter.plot_data(g_trainer.net.loss_train, "Primary Train Loss")
-    myplotter.legend()
-    myplotter.save_figure(base_dir, "global_model_metrics")
+    # myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Loss", 1)
+    # myplotter.plot_data(g_trainer.net.loss_test, "Primary Test Loss")
+    # myplotter.plot_data(g_trainer.net_secondary.loss_test, "Secondary Test Loss")
+    # myplotter.plot_data(g_trainer.net.loss_train, "Primary Train Loss")
+    # myplotter.legend()
+    # myplotter.save_figure(base_dir, "global_model_metrics")
     
-    myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Accuracy", 2)
-    myplotter.plot_data(g_trainer.net.acc, "Global Primary Model")
-    myplotter.plot_data(g_trainer.net_secondary.acc, "Global Secondary Model")
-    if args.brute_force:
-        for idx, k in enumerate(g_trainer.brute_force_nets):
-            myplotter.plot_data(k.acc, f"Brute-Force Freeze degree: {idx}")
-    myplotter.legend()
-    myplotter.save_figure(base_dir, "global_model_accuracy")
+    # myplotter.setup_plot("Global Metrics of FL w/ LeNet-5 Model on CIFAR 10 Dataset", "Accuracy", 2)
+    # myplotter.plot_data(g_trainer.net.acc, "Global Primary Model")
+    # myplotter.plot_data(g_trainer.net_secondary.acc, "Global Secondary Model")
+    # if args.brute_force:
+    #     for idx, k in enumerate(g_trainer.brute_force_nets):
+    #         myplotter.plot_data(k.acc, f"Brute-Force Freeze degree: {idx}")
+    # myplotter.legend()
+    # myplotter.save_figure(base_dir, "global_model_accuracy")
     
-    myplotter.show()
+    # myplotter.show()
 
 
     print(np.array2string(accuracy, separator=', '))
@@ -338,8 +341,10 @@ if __name__ == '__main__':
                             transmission_time=g_trainer.transmission_time,
                             transmission_volume=g_trainer.transmission_volume,
                             transmission_volume_readable=convert_size(g_trainer.transmission_volume),
-                            transmission_volume_history=g_trainer.transmission_volume_history))
+                            transmission_volume_history=g_trainer.transmission_volume_history,
+                            total_time_history=g_trainer.total_time_history,
+                            transmission_time_history=g_trainer.transmission_time_history))
 
     exp1 = Experiment()
-    exp1.output_csv(data=all_results, output_dir=base_dir, fields=['name', 'acc', 'total_time', 'total_trainable_params', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history'])
+    exp1.output_csv(data=all_results, output_dir=base_dir, fields=['name', 'acc', 'total_time', 'total_trainable_params', 'transmission_time', 'transmission_volume', 'transmission_volume_readable', 'transmission_volume_history', 'total_time_history', 'transmission_time_history'])
     exp1.plot_figure(all_results=all_results, output_dir=base_dir)
