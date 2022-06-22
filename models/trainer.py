@@ -38,6 +38,7 @@ class GlobalTrainer(object):
         self.weights_secondary = None
         
         self.models_loss_test_diff = []
+        self.models_loss_test_diff_ratio = []
 
         self.brute_force_nets = [None]*5
         # self.brute_force_weights = []
@@ -51,11 +52,12 @@ class GlobalTrainer(object):
         self.total_time_history = []
 
     def switch_model(self):
-        if self.net.freeze_degree == len(self.net.model.layers):
+        if self.net.freeze_degree == len(self.net.model.layers) -1:
             print('Exceed layer limit, do nothing')
             return
+        
         self.net.model = copy.deepcopy(self.net_secondary.model)
-        if self.net.freeze_degree < len(self.net.model.layers):
+        if self.net.freeze_degree < len(self.net.model.layers) - 1:
             self.net.freeze_degree += 1
             self.net.further_freeze()
 
@@ -77,7 +79,7 @@ class GlobalTrainer(object):
                         new_weights[k] = copy.deepcopy(old_primary_weights[k])
             self.brute_force_nets[d].model.load_state_dict(new_weights)
     
-    # copy from current primary model, for Gradually Freezing
+    # [Deprecated] copy from current primary model, for Gradually Freezing
     def generate_secondary_model_method_1(self, old_primary_weights, epoch):
         new_weights = copy.deepcopy(self.weights) # Weights after aggregation
     
@@ -124,8 +126,10 @@ class GlobalTrainer(object):
                 # print(f'secondary: {self.net_secondary.freeze_degree} {k}')
         self.net_secondary.model.load_state_dict(new_weights)
 
-    def test_model(self):
-        pass
+    def further_freeze_without_opportunistic_train(self):
+        if self.net.freeze_degree < len(self.net.model.layers) - 1:
+            self.net.freeze_degree += 1
+            self.net.further_freeze()
 
 class LocalTrainer(object):
     def __init__(self, args, dataset=None, idxs=None, pretrain=False):
@@ -222,17 +226,24 @@ class MyModel(object):
     
     def update_loss_train_delta(self, loss):
         if self.loss_train:
-            self.loss_train_delta.append(loss - self.loss_train[-1])
+            self.loss_train_delta.append(abs(loss - self.loss_train[-1]))
 
     def update_loss_test_delta(self, loss):
         if self.loss_test:
-            self.loss_test_delta.append(loss - self.loss_test[-1])
+            # self.loss_test_delta.append(loss - self.loss_test[-1])
+            self.loss_test_delta.append(abs(loss - self.loss_test[-1]))
 
-    def is_converged(self):
+
+    def is_converged(self, converged_threshold):
         avg_train_loss_delta = moving_average(self.loss_train_delta, self.args.window_size)
-        if not np.isnan(avg_train_loss_delta) and avg_train_loss_delta < LOSS_DELTA_CONVERGED_THRESHOLD:
+        if not np.isnan(avg_train_loss_delta) and avg_train_loss_delta <= converged_threshold:
             return True
         return False
+
+        # avg_test_loss_delta = moving_average(self.loss_test_delta, self.args.window_size)
+        # if not np.isnan(avg_test_loss_delta) and avg_test_loss_delta < LOSS_DELTA_CONVERGED_THRESHOLD:
+        #     return True
+        # return False
     
 
     def further_freeze(self):

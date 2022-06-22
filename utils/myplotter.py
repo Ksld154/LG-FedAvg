@@ -39,9 +39,9 @@ def multiplot(all_data, y_label, title, figure_idx):
     # plt.figure(num=figure_idx, figsize=(10, 8))
     plt.title(title)
     plt.ylabel(y_label)   # y label
-    plt.xlabel("Epochs")  # x label
-    font = {'size'   : 12}
-    plt.rc('font', **font)
+    plt.xlabel("Iteration Rounds")  # x label
+    # font = {'size'   : 12}
+    # plt.rc('font', **font)
     
     for data in all_data:
         # print(data)
@@ -170,8 +170,8 @@ def plot_trans_to_acc(all_data, title, figure_idx):
     plt.title(title)
     plt.ylabel("Accuracy")   # y label
     plt.xlabel("Transmission volume (MB)")  # x label
-    font = {'size'   : 12}
-    plt.rc('font', **font)
+    # font = {'size'   : 12}
+    # plt.rc('font', **font)
 
     for data in all_data:
         # print(data['transmission_volume_history'])
@@ -194,8 +194,8 @@ def scatter_trans_to_bestacc(all_data, title, figure_idx):
     plt.title(title)
     plt.ylabel("Accuracy")   # y label
     plt.xlabel("Transmission volume (GB)")  # x label
-    font = {'size'   : 12}
-    plt.rc('font', **font)
+    # font = {'size'   : 12}
+    # plt.rc('font', **font)
 
     for data in all_data:
         # print(data['transmission_volume_history'])

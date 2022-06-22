@@ -63,10 +63,17 @@ def args_parser():
     parser.add_argument('--static_freeze', dest='static_freeze', action='store_true', help='Static Freezing')
     parser.add_argument('--no-static_freeze', dest='static_freeze', action='store_false', help='Disable Static Freezing')
     parser.set_defaults(static_freeze=False)
+    
     parser.add_argument('--load_pretrained', type=str, default='', help='Load pretrained  model path')
-
     parser.add_argument('--static_freeze_candidates', type=int, default=5, help='Static Freeze candidates numbers')
+    parser.add_argument('--loss_diff_ratio', type=float, default=-1, help="loss_diff_ratio to switch model")
 
+    parser.add_argument('--optimistic_train', dest='optimistic_train', action='store_true', help='Optimistic train and switch between models (Our method)')
+    parser.add_argument('--no-optimistic_train', dest='optimistic_train', action='store_false', help='Do not optimistic train and switch between models (Baseline)')
+    parser.set_defaults(optimistic_train=True)
+    
+
+    parser.add_argument('--converged_threshold', type=float, default=0.05, help="loss_diff_ratio to switch model")
 
     args = parser.parse_args()
     return args

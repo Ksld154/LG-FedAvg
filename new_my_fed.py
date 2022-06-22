@@ -209,7 +209,6 @@ if __name__ == '__main__':
             if any(substr in k for substr in g_trainer.net.frozen_layers_name):
                 # print(f'{g_trainer.net.freeze_degree} {k}')
                 g_trainer.weights[k] = copy.deepcopy(old_weights[k]) 
-        
         g_trainer.net.model.load_state_dict(g_trainer.weights)
 
 
@@ -221,10 +220,6 @@ if __name__ == '__main__':
         g_trainer.new_generate_secondary_model_method_1(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
 
         # g_trainer.generate_secondary_model_method_2(epoch=e)
-
-        if args.brute_force:
-            g_trainer.brute_force_search_models(old_primary_weights=copy.deepcopy(old_weights), epoch=e)
-
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
@@ -267,16 +262,6 @@ if __name__ == '__main__':
             g_trainer.models_loss_test_diff.append(loss_test_2 - loss_test)
             g_trainer.models_loss_test_diff_ratio.append((loss_test_2 - loss_test) / loss_test)
 
-            
-            if args.brute_force:
-                for d in range(4):
-                    g_trainer.brute_force_nets[d].model.eval()
-                    acc_test, loss_test = test_img(g_trainer.brute_force_nets[d].model, dataset_test, args)
-                    print(f'Round {(e+1):3d}, Average loss {loss_avg:.3f}, Test loss {loss_test_2:.3f}, Test accuracy: {acc_test:.2f} [Brute-force search model: {g_trainer.brute_force_nets[d].freeze_degree}]')
-                    g_trainer.brute_force_nets[d].update_loss_test_delta(loss=loss_test)
-                    g_trainer.brute_force_nets[d].loss_test.append(loss_test)
-                    g_trainer.brute_force_nets[d].acc.append(acc_test)   
-
         if (e+1) % 50 == 0:
             best_save_path = os.path.join(base_dir, f'fed/best_{(e + 1)}.pt')
             model_save_path = os.path.join(base_dir, f'fed/model_{(e + 1)}.pt')
@@ -305,18 +290,13 @@ if __name__ == '__main__':
                 window_size_cnt = 0
 
         
-        elif args.switch_model and g_trainer.net.is_converged(args.converged_threshold) and g_trainer.net_secondary.is_converged(args.converged_threshold):
-            print("*** Both models are converged! ***")
 
-            if window_size_cnt >= args.window_size and not np.isnan(avg_loss_diff_ratio) and avg_loss_diff < args.loss_diff_ratio:
-                print(f"Secondary model ratio is tolarably good: {avg_loss_diff_ratio}, let's switch model")
-                g_trainer.switch_model()
-                window_size_cnt = 0
 
-            # elif window_size_cnt >= args.window_size and not np.isnan(avg_loss_diff) and avg_loss_diff < LOSS_DIFF_THRESHOLD:
-            #     print(f"Secondary model is tolarably good: {avg_loss_diff}, let's switch model")
-            #     g_trainer.switch_model()
-            #     window_size_cnt = 0
+        if window_size_cnt >= args.window_size and not np.isnan(avg_loss_diff_ratio) and avg_loss_diff < args.loss_diff_ratio:
+            print(f"Secondary model ratio is tolarably good: {avg_loss_diff_ratio}, let's switch model")
+            g_trainer.switch_model()
+            window_size_cnt = 0
+
     
 
     end_time = time.time()

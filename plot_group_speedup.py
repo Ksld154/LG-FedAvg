@@ -3,6 +3,8 @@ import sys
 import os
 import datetime
 
+# sys.path.append('..')
+
 import utils.csv_exporter
 import utils.group_plotter
 from constants import *
@@ -22,7 +24,9 @@ if __name__ == '__main__':
         sys.exit(0)
          
     gr1_data = utils.csv_exporter.import_csv(cmd_args.load_group1)
+    gr1_data = utils.group_plotter.calc_transmission_speedup(all_data=gr1_data)
     gr2_data = utils.csv_exporter.import_csv(cmd_args.load_group2)
+    gr2_data = utils.group_plotter.calc_transmission_speedup(all_data=gr2_data)
     all_data = [gr1_data, gr2_data]
     print(len(all_data))
 
@@ -36,13 +40,19 @@ if __name__ == '__main__':
 
     # Create output folder
     script_time = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    output_dir = f'./save/group_plot_result/{script_time}_{model_type}'
+    output_dir = f'./save/group_speedup_result/{script_time}_{model_type}'
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
+    utils.group_plotter.plot_speedup_ratio(all_data=all_data, title='', figure_idx=1)
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_speedup-ratio.png'))
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_speedup-ratio.eps'))
 
-    utils.group_plotter.plot_transmission_volume(all_data=all_data, title='', figure_idx=1)
-    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_trans.png'))
-    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_trans.eps'))
+    utils.group_plotter.plot_speedup_duration(all_data=all_data, title='', figure_idx=2)
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_duration.png'))
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_duration.eps'))
 
 
+    utils.group_plotter.plot_transmission_volume(all_data=all_data, title='', figure_idx=3)
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_trans_volume.png'))
+    utils.group_plotter.save_figure(os.path.join(output_dir, f'{model_type}_{script_time}_trans_volume.eps'))
