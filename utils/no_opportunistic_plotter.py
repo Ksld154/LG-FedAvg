@@ -191,7 +191,7 @@ def plot_best_acc(all_data, title, figure_idx):
     plt.xlabel('')
     plt.xticks([])
     plt.ylim(bottom=0.0)  
-    leg = plt.legend(loc='upper right', frameon=False, ncol=3)
+    leg = plt.legend(loc='upper right', frameon=False, ncol=2)
     leg.set_draggable(state=True)    
 
 
@@ -311,3 +311,57 @@ def plot_total_transmission(all_data, title, figure_idx):
     leg = plt.legend(loc='upper right', frameon=False, ncol=2)
     leg.set_draggable(state=True)    
     
+
+def plot_epoch_to_target_acc(all_data, title, figure_idx, model_type):
+    set_figure_size(figure_idx=figure_idx)
+    if model_type == 'ResNet-18':
+        target_accs = [0.7, 0.75, 0.8, 0.85, 0.9]
+    elif model_type == 'MobileNet':
+        target_accs = [0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+    else: # merged
+        target_accs = [0.65, 0.7, 0.75, 0.8]
+
+
+    print(target_accs)
+    all_group_data = []
+    model_name = []
+    for idx, data in enumerate(all_data):
+        target_acc_idx = 0
+        if 'Static: all' in data['name']:
+            continue  
+        model_name.append(data['name'])
+
+        
+        if 'No Freeze' in data["name"]:
+            data['acc'] = data['acc'][WARM_UP_ROUNDS:]
+        
+        accs = data['acc']
+        print(len(accs))
+
+        target_epoch = []
+        for idx, acc in enumerate(accs):
+            if target_acc_idx < len(target_accs) and acc >= target_accs[target_acc_idx]:
+                target_acc_idx += 1
+                print(f'{acc}, {idx}')
+                target_epoch.append(idx)
+        print(target_epoch)
+
+        for i in range(len(target_accs) - len(target_epoch)):
+            target_epoch.append(0)
+        all_group_data.append(target_epoch)    
+    print(all_group_data)
+    
+    x = np.arange(len(target_accs))
+
+
+    for idx, model_volume in enumerate(all_group_data):
+        label = model_name[idx]
+        plt.bar(x+0.1*idx, model_volume, color=color_options[idx % len(color_options)], hatch=hatch_options[idx % len(hatch_options)], width=0.1, label=label)
+
+    plt.title(title)
+    plt.ylabel('Iteration Rounds')  
+    plt.xlabel('Target Accuracy')
+
+    xtick_label = [f'{acc}' for acc in target_accs]
+    plt.xticks(x+0.2, xtick_label)  
+    plt.legend(loc='upper left', frameon=False)

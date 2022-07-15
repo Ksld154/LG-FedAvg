@@ -57,8 +57,9 @@ def plot_trans_to_target_acc_old(all_data, output_dir):
     #     print(all_group_data)
 
 
-    utils.no_opportunistic_plotter.save_figure(base_dir=output_dir, filename=f'_volume_to_target_acc.eps')
-    utils.no_opportunistic_plotter.save_figure(base_dir=output_dir, filename=f'_volume_to_target_acc.png')
+    # utils.no_opportunistic_plotter.save_figure(base_dir=output_dir, filename=f'_volume_to_target_acc.eps')
+    # utils.no_opportunistic_plotter.save_figure(base_dir=output_dir, filename=f'_volume_to_target_acc.png')
+    pass
 
 
 def plot_trans_to_target_acc_new(all_data, output_dir):
@@ -99,6 +100,12 @@ def plot_accuracy_to_transmission_volume_ratio(all_data):
     utils.no_opportunistic_plotter.save_figure(base_dir='.', filename=f'merged_accuracy_to_transmission_volume_ratio.png')
     # utils.no_opportunistic_plotter.block_show()
 
+def plot_epoch_to_target_acc(all_data, output_dir):
+    utils.no_opportunistic_plotter.plot_epoch_to_target_acc(all_data=all_data, figure_idx=20, model_type='merged', title='')
+    utils.no_opportunistic_plotter.save_figure(base_dir='.', filename=f'merged_epoch_to_target_acc.eps')
+    utils.no_opportunistic_plotter.save_figure(base_dir='.', filename=f'merged_epoch_to_target_acc.png')
+
+
 if __name__ == '__main__':    
 
     # merge 2 kinds of model on the same graph
@@ -111,3 +118,4 @@ if __name__ == '__main__':
     
     merged_data = utils.csv_exporter.import_csv(filepath='merged_no-opp_switch.csv')
     plot_trans_to_target_acc_new(all_data=merged_data, output_dir='.')
+    plot_epoch_to_target_acc(all_data=merged_data, output_dir='.')
