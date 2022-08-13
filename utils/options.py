@@ -72,6 +72,7 @@ def args_parser():
     parser.add_argument('--no-optimistic_train', dest='optimistic_train', action='store_false', help='Do not optimistic train and switch between models (Baseline)')
     parser.set_defaults(optimistic_train=True)
     
+    parser.add_argument('--pre_trained_rounds', type=int, default=15, help='Pre-trained rounds')
 
     parser.add_argument('--converged_threshold', type=float, default=0.05, help="loss_diff_ratio to switch model")
 

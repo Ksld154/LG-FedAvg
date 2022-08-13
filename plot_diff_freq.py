@@ -8,6 +8,48 @@ import utils.myplotter
 import utils.eps_plotter
 from constants import *
 
+from matplotlib import markers
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+import os
+
+import numpy as np
+
+from constants import *
+
+DEFAULT_FIGURE_SIZE = 2
+color_options  = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+linestyle_options = ['-', '--', '-.', ':']
+marker_options = ['o', '*', '.', ',', 'x', 'P', 'D', 'H']
+hatch_options = ['/', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*']
+
+MODEL_NAME = ['Baseline', 'Layer Freezing w/ PCME']
+
+def set_figure_size(figure_idx):
+    ax1 = plt.figure(num=figure_idx, figsize=(4*DEFAULT_FIGURE_SIZE, 3*DEFAULT_FIGURE_SIZE)).gca()
+    ax1.xaxis.set_major_locator(MaxNLocator(integer=True)) # integer x-axis
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+
+def legend():
+    plt.legend(loc='lower right', frameon=False)
+
+def save_figure(base_dir, filename):
+    image_path = os.path.join(base_dir, filename)
+    print(image_path)
+    plt.savefig(image_path)
+
+def show():
+    plt.show(block=False)
+    plt.pause(5)
+    plt.close()
+
+def block_show():
+    plt.show()
+    plt.close()
+
+
+
 def opt_parser():
     usage = 'Merge FL training results and plot figure from static freezing results and Gradually Freezing results.'
     parser = argparse.ArgumentParser(description=usage)
@@ -19,20 +61,10 @@ def opt_parser():
 
 def get_static_freeze_data(filepath, pre_freeze_params):
     data = utils.csv_exporter.import_csv(filepath=filepath)
-
-
-    # result_all_data = []
-    # for row in data:
-    #     transmission_volumes = eval(row['transmission_volume_history'])
-
-    #     data['speedup_ratio'] = baseline_time / data['total_time']
-    #     print(f'{data["speedup_ratio"]} {data["speedup_trans_ratio"]}')
-        
-    #     result_all_data.append(data)
     return data
 
 def get_gradually_freeze_data_2(filepath, static_freeze_data):
-    pretrained_acc = static_freeze_data[0]['acc'][:WARM_UP_ROUNDS]
+    pretrained_acc = static_freeze_data[0]['acc'][:3]
     # print(pretrained_acc)
     
     data = utils.csv_exporter.import_csv(filepath=filepath)
@@ -86,85 +118,86 @@ def calc_speedup(all_data):
 
 
 def plot_epoch_to_accuracy(all_data, output_dir, timestamp, model_type):
-    utils.eps_plotter.multiplot(
-        all_data=all_data,
-        y_label="Accuracy",
-        title="",
-        figure_idx=1
-    )
+    set_figure_size(figure_idx=1)
+
+    plt.title('')
+    plt.ylabel("Accuracy")   # y label
+    plt.xlabel("Iteration Rounds")  # x label
+    
+    for idx, data in enumerate(all_data):
+        plt.plot(data.get('acc'),
+                 label=MODEL_NAME[idx],
+                 marker=marker_options[idx % len(marker_options)],
+                 linestyle=linestyle_options[idx % len(linestyle_options)])
+
+    leg = plt.legend(loc='lower right', frameon=False)
+    leg.set_draggable(state=True)  
     utils.eps_plotter.legend()
-    utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_Accuracy.eps")
+    # utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_Accuracy.eps")
     utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_Accuracy.png")
 
 
-
-def plot_transmission_ratio(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_transmission_ratio(all_data=all_data, title=f'', figure_idx=3)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_transmission_volume_reduction.eps')
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_transmission_volume_reduction.png') 
-
-
-
-def plot_speedup(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_speedup_ratio(all_data, title=f'', figure_idx=4)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_speedup.eps')
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_speedup.png') 
-
-
-
-def plot_trans_to_acc(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_trans_to_acc(all_data, title=f'', figure_idx=5)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_volume_to_acc.eps')
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_volume_to_acc.png') 
-
-def plot_epoch_to_trans(all_data, output_dir, timestamp, model_type):
-    pass
-    utils.eps_plotter.plot_epoch_to_trans(
-        all_data=all_data,
-        y_label="Accuracy",
-        title="",
-        figure_idx=6
-    )
-    utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_trans.eps")
-    utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_trans.png")
-    utils.eps_plotter.block_show()
-
-
-def plot_epoch_to_trans_new(all_data, output_dir, timestamp, model_type):
-    prefreeze_volume = 0
-    if model_type == 'ResNet-18':
-        prefreeze_volume = (RESNET_18_PARAMS*4*8 * 5) /8/1024/1024  # 5: # of participant
-    elif model_type == 'MobileNet':
-        prefreeze_volume = (MOBILENET_PARAMS*4*8 * 5) /8/1024/1024 
-    print(model_type, prefreeze_volume)
-         
-    
-    utils.eps_plotter.plot_epoch_to_trans(
-        all_data=all_data,
-        prefreeze_volume=prefreeze_volume,
-        title="",
-        figure_idx=6
-    )
-    utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_trans.eps")
-    utils.eps_plotter.save_figure(output_dir, f"{timestamp}_{model_type}_FL_epoch_to_trans.png")
-    utils.eps_plotter.block_show()
-
-
-def plot_trans_to_target_acc(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_trans_to_target_acc(all_data, title=f'', figure_idx=10, model_type=model_type)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_volume_to_target_acc.eps')
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_volume_to_target_acc.png')
-    utils.eps_plotter.block_show()
-
-
 def plot_duration(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_duration(all_data=all_data, title=f'', figure_idx=12)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_duration.eps')
+    set_figure_size(figure_idx=2)
+
+    all_duration = []
+    for idx, data in enumerate(all_data):
+        if 'Static: all' not in MODEL_NAME[idx]:
+            d = float(data['total_time'])
+            all_duration.append(d)
+    print(all_duration)
+
+    x = np.arange(1)
+    reshape_all_accs = []
+    for d in all_duration:
+        reshape_all_accs.append([d])
+
+    for idx, model_accs in enumerate(reshape_all_accs):
+        label = MODEL_NAME[idx+1] if 'Static: all' in MODEL_NAME[idx] else MODEL_NAME[idx]
+        
+           
+        plt.bar(x+0.1*idx, model_accs, 
+                color=color_options[idx % len(color_options)], 
+                hatch=hatch_options[idx % len(hatch_options)],
+                width=0.1, label=label)
+
+    plt.title('')
+    plt.ylabel('Duration (seconds)')  
+    plt.xlabel('')  
+    plt.xticks([])
+    plt.legend(loc='upper right', frameon=False)
     utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_duration.png') 
 
 def plot_volume(all_data, output_dir, model_type):
-    utils.eps_plotter.plot_volume(all_data=all_data, title=f'', figure_idx=13)
-    utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_trans_volume.eps')
+    set_figure_size(figure_idx=3)
+
+    all_duration = []
+    for idx, data in enumerate(all_data):
+        if 'Static: all' not in MODEL_NAME[idx]:
+            d = float(data['transmission_volume'])
+            d_mb = float(d) /8/1024/1024
+            all_duration.append(d_mb)
+    print(all_duration)
+
+    x = np.arange(1)
+    reshape_all_accs = []
+    for d in all_duration:
+        reshape_all_accs.append([d])
+
+    for idx, model_accs in enumerate(reshape_all_accs):
+        label = MODEL_NAME[idx+1] if 'Static: all' in MODEL_NAME[idx] else MODEL_NAME[idx]
+        
+           
+        plt.bar(x+0.1*idx, model_accs, 
+                color=color_options[idx % len(color_options)], 
+                hatch=hatch_options[idx % len(hatch_options)],
+                width=0.1, label=label)
+
+    plt.title('')
+    plt.ylabel('Transmission Volume (MB)')  
+    plt.xlabel('')  
+    plt.xticks([])
+    plt.legend(loc='upper right', frameon=False)
     utils.eps_plotter.save_figure(base_dir=output_dir, filename=f'{model_type}_trans_volume.png') 
 
 
@@ -197,8 +230,6 @@ if __name__ == '__main__':
     print(f'{hyper_params} {static_dt} {gf_dt}')
     
     
-    # utils.eps_plotter.plot_trans_to_target_acc(all_data, title=f'', figure_idx=10)
-    # exit(0)
 
     # Create output folder
     script_time = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -211,14 +242,8 @@ if __name__ == '__main__':
     print(merged_csv_filename)
     utils.csv_exporter.export_csv(data=new_all_data, filepath=merged_csv_filename, fields=new_all_data[1].keys())
 
-    plot_epoch_to_trans_new(all_data=new_all_data, output_dir=output_dir, timestamp=script_time, model_type=model_type)
-    # plot_trans_to_target_acc(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
-    # exit(0)
 
     plot_epoch_to_accuracy(all_data=new_all_data, output_dir=output_dir, timestamp=script_time, model_type=model_type)
-    # plot_transmission_ratio(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
-    # plot_speedup(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
-    plot_trans_to_acc(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
     plot_duration(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
     plot_volume(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
 

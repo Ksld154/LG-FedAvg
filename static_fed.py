@@ -46,7 +46,7 @@ class Experiment():
         results = []
         
 
-        for iter in range(WARM_UP_ROUNDS):
+        for iter in range(args.pre_trained_rounds):
             w_glob = None
             loss_locals = []
             m = max(int(self.args.frac * self.args.num_users), 1)
@@ -164,8 +164,8 @@ class StaticFreeze():
         torchinfo.summary(net_glob, (1,3,32,32), device=self.args.device)
         
 
-        for iter in range(self.args.epochs-WARM_UP_ROUNDS):
-            epoch = iter+WARM_UP_ROUNDS
+        for iter in range(self.args.epochs-args.pre_trained_rounds):
+            epoch = iter+args.pre_trained_rounds
             
             w_glob = None
             loss_locals = []

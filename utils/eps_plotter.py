@@ -14,6 +14,8 @@ marker_options = ['o', '*', '.', ',', 'x', 'P', 'D', 'H']
 hatch_options = ['/', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*']
 MODEL_NAME = ['Baseline', 'Static: 1/4', 'Static: 1/2', 'Static: 3/4', 'Static: all', 'Gradually Freezing']
 
+MODEL_NAME2 = ['Baseline', 'Layer Freezing w/ PCME']
+
 
 def set_figure_size(figure_idx):
     ax1 = plt.figure(num=figure_idx, figsize=(4*DEFAULT_FIGURE_SIZE, 3*DEFAULT_FIGURE_SIZE)).gca()
@@ -57,7 +59,7 @@ def multiplot(all_data, y_label, title, figure_idx):
     leg = plt.legend(loc='lower right', frameon=False)
     leg.set_draggable(state=True)    
 
-def plot_epoch_to_trans(all_data, y_label, title, figure_idx):
+def plot_epoch_to_trans(all_data, prefreeze_volume, title, figure_idx):
     set_figure_size(figure_idx=figure_idx)
 
     plt.title(title)
@@ -69,7 +71,7 @@ def plot_epoch_to_trans(all_data, y_label, title, figure_idx):
             continue
         transmission_volumes = eval(data['transmission_volume_history'])
         data_transmission_in_mb = [float(x)/8/1024/1024 for x in transmission_volumes]
-        transmisiion_volume_per_round = [data_transmission_in_mb[i]-data_transmission_in_mb[i-1] for i in range(1, len(data_transmission_in_mb))]
+        transmisiion_volume_per_round = [prefreeze_volume]*WARM_UP_ROUNDS + [data_transmission_in_mb[i]-data_transmission_in_mb[i-1] for i in range(1, len(data_transmission_in_mb))]
         
         plt.plot(transmisiion_volume_per_round,
                  label=MODEL_NAME[idx],
@@ -107,6 +109,7 @@ def plot_speedup_ratio(all_data, title, figure_idx):
     plt.xlabel('')  
     plt.xticks([])
     plt.legend(loc='upper left', frameon=False)
+
 
 
 def plot_transmission_ratio(all_data, title, figure_idx):
@@ -217,3 +220,64 @@ def plot_trans_to_target_acc(all_data, title, figure_idx, model_type):
     plt.xticks(x+0.2, xtick_label)  
     leg = plt.legend(loc='upper left', frameon=False)
     leg.set_draggable(state=True)    
+
+def plot_duration(all_data, title, figure_idx):
+    set_figure_size(figure_idx=figure_idx)
+
+    all_duration = []
+    for idx, data in enumerate(all_data):
+        if 'Static: all' not in MODEL_NAME[idx]:
+            d = float(data['total_time'])
+            all_duration.append(d)
+    print(all_duration)
+
+    x = np.arange(1)
+    reshape_all_accs = []
+    for d in all_duration:
+        reshape_all_accs.append([d])
+
+    for idx, model_accs in enumerate(reshape_all_accs):
+        label = MODEL_NAME[idx+1] if 'Static: all' in MODEL_NAME[idx] else MODEL_NAME[idx]
+        
+           
+        plt.bar(x+0.1*idx, model_accs, 
+                color=color_options[idx % len(color_options)], 
+                hatch=hatch_options[idx % len(hatch_options)],
+                width=0.1, label=label)
+
+    plt.title(title)
+    plt.ylabel('Duration (seconds)')  
+    plt.xlabel('')  
+    plt.xticks([])
+    plt.legend(loc='upper right', frameon=False)
+
+def plot_volume(all_data, title, figure_idx):
+    set_figure_size(figure_idx=figure_idx)
+
+    all_duration = []
+    for idx, data in enumerate(all_data):
+        if 'Static: all' not in MODEL_NAME[idx]:
+            d = float(data['transmission_volume'])
+            d_mb = float(d) /8/1024/1024
+            all_duration.append(d_mb)
+    print(all_duration)
+
+    x = np.arange(1)
+    reshape_all_accs = []
+    for d in all_duration:
+        reshape_all_accs.append([d])
+
+    for idx, model_accs in enumerate(reshape_all_accs):
+        label = MODEL_NAME[idx+1] if 'Static: all' in MODEL_NAME[idx] else MODEL_NAME[idx]
+        
+           
+        plt.bar(x+0.1*idx, model_accs, 
+                color=color_options[idx % len(color_options)], 
+                hatch=hatch_options[idx % len(hatch_options)],
+                width=0.1, label=label)
+
+    plt.title(title)
+    plt.ylabel('Transmission Volume (MB)')  
+    plt.xlabel('')  
+    plt.xticks([])
+    plt.legend(loc='upper right', frameon=False)

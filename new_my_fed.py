@@ -94,7 +94,7 @@ if __name__ == '__main__':
         if os.path.exists(pretrained_path):
             print(f'Use pretrained model: {pretrained_path}')
             net_glob.load_state_dict(torch.load(pretrained_path))
-            args.epochs -= WARM_UP_ROUNDS
+            args.epochs -= args.pre_trained_rounds
             
         else:
             print(f'[ERROR] Pretrain model not exists!')

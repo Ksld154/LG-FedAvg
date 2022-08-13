@@ -141,3 +141,4 @@ cython_debug/
 
 data/
 save/
+post_oral_experiments/02_diff_freq/result/*.png
