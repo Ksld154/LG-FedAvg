@@ -118,7 +118,7 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     
-    plot_trans_to_target_acc(all_data=all_data, output_dir=output_dir, model_type=model_type)
+    # plot_trans_to_target_acc(all_data=all_data, output_dir=output_dir, model_type=model_type)
     # exit(0)
 
     # plot_epoch_to_trans(all_data=all_data, output_dir=output_dir, timestamp=script_time, model_type=model_type)

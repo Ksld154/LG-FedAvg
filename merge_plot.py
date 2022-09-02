@@ -212,7 +212,7 @@ if __name__ == '__main__':
     utils.csv_exporter.export_csv(data=new_all_data, filepath=merged_csv_filename, fields=new_all_data[1].keys())
 
     plot_epoch_to_trans_new(all_data=new_all_data, output_dir=output_dir, timestamp=script_time, model_type=model_type)
-    # plot_trans_to_target_acc(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
+    plot_trans_to_target_acc(all_data=new_all_data, output_dir=output_dir, model_type=model_type)
     # exit(0)
 
     plot_epoch_to_accuracy(all_data=new_all_data, output_dir=output_dir, timestamp=script_time, model_type=model_type)
